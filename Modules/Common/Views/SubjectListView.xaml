@@ -6,26 +6,34 @@
         <conv:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
     </UserControl.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  AllowDrop="True"
+                  Drop="SubjectList_Drop"
+                  DragOver="SubjectList_DragOver">
         <ItemsControl ItemsSource="{Binding Subjects}">
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
                     <StackPanel>
-                        <!-- 과목명 -->
-                        <Grid Height="60">
+                        <!-- 과목명 - 드래그 가능 -->
+                        <Grid Height="60" Background="Transparent"
+                              MouseLeftButtonDown="SubjectGrid_MouseLeftButtonDown"
+                              MouseMove="SubjectGrid_MouseMove">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="20" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{Binding SubjectName}" FontWeight="Bold" FontSize="16" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="0" Text="{Binding SubjectName}" FontWeight="Bold" FontSize="16" VerticalAlignment="Center"
+                                       x:Name="SubjectNameText"/>
                             <Button Grid.Column="1" Command="{Binding ToggleCommand}" Style="{StaticResource FolderButtonStyle}" VerticalAlignment="Center"/>
                         </Grid>
 
-                        <!-- 토픽 그룹 -->
+                        <!-- 토픽 그룹 - 드래그 가능하도록 수정 -->
                         <ItemsControl ItemsSource="{Binding TopicGroups}" Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVisibilityConverter}}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid Height="60" VerticalAlignment="Center">
+                                    <Grid Height="60" VerticalAlignment="Center" Background="Transparent"
+                                          MouseLeftButtonDown="TopicGroup_MouseLeftButtonDown"
+                                          MouseMove="TopicGroup_MouseMove">
                                         <TextBlock Text="{Binding GroupTitle}" Margin="10,0" FontSize="14" FontWeight="Bold" VerticalAlignment="Center"/>
                                     </Grid>
                                 </DataTemplate>
