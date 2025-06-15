@@ -4,11 +4,13 @@ using SP.ViewModels;
 using System.Collections.ObjectModel;
 using System.Windows.Input;
 
-
 namespace SP.Modules.Subjects.ViewModels
 {
     public class SubjectListPageViewModel : ViewModelBase
     {
+        // 싱글톤 DB 헬퍼 사용
+        private readonly DatabaseHelper _db = DatabaseHelper.Instance;
+
         public ObservableCollection<SubjectGroupViewModel> Subjects { get; set; } = new();
 
         private bool _isAdding;
@@ -32,7 +34,6 @@ namespace SP.Modules.Subjects.ViewModels
             set => SetProperty(ref _newSubjectText, value);
         }
 
-
         public SubjectListPageViewModel()
         {
             Subjects = new ObservableCollection<SubjectGroupViewModel>();
@@ -44,10 +45,8 @@ namespace SP.Modules.Subjects.ViewModels
             {
                 if (!string.IsNullOrWhiteSpace(NewSubjectText))
                 {
-                    var helper = new DatabaseHelper();
-
                     // DB에 저장
-                    int subjectId = helper.AddSubject(NewSubjectText);
+                    int subjectId = _db.AddSubject(NewSubjectText);
 
                     // ViewModel에 추가
                     Subjects.Add(new SubjectGroupViewModel
@@ -62,17 +61,15 @@ namespace SP.Modules.Subjects.ViewModels
                 }
             });
         }
+
         private void LoadSubjects()
         {
-            var helper = new DatabaseHelper();
-            var subjectList = helper.LoadSubjectsWithGroups(); // 이 메서드 구현 필요
+            var subjectList = _db.LoadSubjectsWithGroups();
 
             foreach (var subject in subjectList)
             {
                 Subjects.Add(subject);
             }
         }
-
     }
-
 }

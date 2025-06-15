@@ -1,17 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 using SP.Modules.Common.ViewModels;
 using SP.Modules.Daily.Views;
 using SP.Modules.Subjects.Views;
@@ -27,27 +16,25 @@ namespace SP.Modules.Common.Views
         public LeftSidebar()
         {
             InitializeComponent();
-
-            DataContext = new LeftSidebarViewModel("today"); // 또는 "main"
+            // DataContext는 MainViewModel에서 설정됨
         }
+
         private void TextBlock_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             if (Window.GetWindow(this)?.DataContext is MainViewModel vm)
             {
+                // 현재 화면이 Daily인지 Subject인지 확인하고 토글
                 if (vm.HeaderContent is DailyHeaderView)
                 {
-                    vm.HeaderContent = new SubjectListPageHeaderView();
-                    vm.BodyContent = new SubjectListPageBodyView();
-                    vm.SidebarViewModel.SetContext("today");
+                    // Daily -> Subject로 전환
+                    vm.NavigateToSubjectListCommand.Execute(null);
                 }
                 else
                 {
-                    vm.HeaderContent = new DailyHeaderView();
-                    vm.BodyContent = new DailyBodyView();
-                    vm.SidebarViewModel.SetContext("main");
+                    // Subject -> Daily로 전환
+                    vm.NavigateToTodayCommand.Execute(null);
                 }
             }
         }
-
     }
 }
