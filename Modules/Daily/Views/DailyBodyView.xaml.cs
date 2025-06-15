@@ -20,6 +20,7 @@ namespace SP.Modules.Daily.Views
 
             this.Loaded += (s, e) =>
             {
+                System.Diagnostics.Debug.WriteLine(" Loaded fired");
                 Console.WriteLine(" Loaded fired");
                 if (this.DataContext is DailyBodyViewModel vm)
                 {
@@ -28,18 +29,16 @@ namespace SP.Modules.Daily.Views
                         TodoAddBox.Focus();
                         TodoAddBox.SelectAll();
                     };
+                    System.Diagnostics.Debug.WriteLine($"[DailyBodyView Loaded] DataContext: {this.DataContext?.GetType().Name ?? "null"}"); // ★★★ Debug.WriteLine으로 변경 ★★★
                 }
             };
 #if DEBUG
-            if (DesignerProperties.GetIsInDesignMode(this)) // 'this'가 UIElement를 참조하는지 확인 (UserControl, Window 등)
+            if (DesignerProperties.GetIsInDesignMode(this))
             {
                 Debug.WriteLine("[디자인 모드] DailyBodyView 생성됨 (디자이너)");
-                return; // 디자이너 모드에서는 더 이상 코드 실행을 원치 않을 경우
+                return;
             }
 #endif
-
-            Debug.WriteLine("[런타임] DailyBodyView 생성됨, DataContext: " + (this.DataContext?.GetType().Name ?? "null"));
-            Debug.WriteLine(Environment.StackTrace); // 현재 호출한 코드 스택을 출력
 
         }
 

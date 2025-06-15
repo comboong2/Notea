@@ -31,10 +31,6 @@ namespace SP.Modules.Daily.Models
                 {
                     _isCompleted = value;
                     OnPropertyChanged();
-
-                    //  DB에 저장
-                    SP.Modules.Common.Helpers.DatabaseHelper helper = new();
-                    helper.UpdateTodoCompletion(Id, _isCompleted);
                 }
             }
         }

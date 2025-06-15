@@ -101,11 +101,16 @@ namespace SP.Modules.Daily.ViewModels
         {
             SelectedDate = date;
 
+            System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] LoadDailyData 호출됨. 날짜: {date.ToShortDateString()}"); // ★★★ 디버그 출력 추가 ★★★
+
             // Comment 불러오기
             Comment = _db.GetCommentByDate(date);
+            System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] Comment 로드됨: '{Comment}'"); // ★★★ 디버그 출력 추가 ★★★
 
             var todos = _db.GetTodosByDate(date);
             TodoList.Clear();
+            System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 투두 항목 {todos.Count}개 DB에서 로드됨."); // ★★★ 디버그 출력 추가 ★★★
+
             foreach (var todo in todos)
             {
                 //  IsCompleted 변경될 때마다 DB 반영
@@ -119,6 +124,7 @@ namespace SP.Modules.Daily.ViewModels
 
                 TodoList.Add(todo);
             }
+            System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] TodoList에 {TodoList.Count}개 항목 추가됨."); // ★★★ 디버그 출력 추가 ★★★
         }
 
 

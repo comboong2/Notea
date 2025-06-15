@@ -25,10 +25,10 @@ namespace SP.Modules.Subjects.ViewModels
             ToggleCommand = new RelayCommand(() => IsExpanded = !IsExpanded);
         }
 
-        // ✅ [1] 과목별 학습시간 (초 단위)
+        //  [1] 과목별 학습시간 (초 단위)
         public int TotalStudyTime { get; set; }
 
-        // ✅ [2] 전체 과목 학습시간 중 이 과목이 차지하는 비율
+        //  [2] 전체 과목 학습시간 중 이 과목이 차지하는 비율
         private static int _totalAllSubjectsTime = 0; // 모든 과목의 총합
         public static void SetGlobalTotalTime(int total)
         {
@@ -38,5 +38,6 @@ namespace SP.Modules.Subjects.ViewModels
         public double ProgressRatio => _totalAllSubjectsTime > 0
             ? (double)TotalStudyTime / _totalAllSubjectsTime
             : 0;
+        public double ProgressWidth => ProgressRatio * 200; // 200은 ProgressBar의 최대 너비에 맞게 조정
     }
 }
