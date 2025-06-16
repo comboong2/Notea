@@ -2,7 +2,11 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:SP.Modules.Common.Views"
-             xmlns:converters="clr-namespace:SP.Converters" Height="Auto" Width="Auto">
+             xmlns:converters="clr-namespace:SP.Converters" 
+             Height="Auto" Width="Auto"
+             AllowDrop="True"
+             Drop="SubjectProgressListView_Drop"
+             DragOver="SubjectProgressListView_DragOver">
 
     <UserControl.Resources>
         <converters:ProgressToWidthConverter x:Key="ProgressToWidthConverter"/>
@@ -49,44 +53,63 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- 드롭 시 시각적 피드백을 위한 스타일 -->
+        <Style x:Key="DropTargetStyle" TargetType="Border">
+            <Setter Property="Background" Value="Transparent"/>
+            <Style.Triggers>
+                <Trigger Property="Tag" Value="DragOver">
+                    <Setter Property="Background" Value="#E3F2FD"/>
+                    <Setter Property="BorderBrush" Value="#2196F3"/>
+                    <Setter Property="BorderThickness" Value="2"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </UserControl.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Orientation="Vertical">
-            <ItemsControl ItemsSource="{Binding Subjects}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <StackPanel Margin="0,0,0,0">
-                            <Grid Height="60">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="1*"/>
-                                    <ColumnDefinition Width="1*"/>
-                                </Grid.ColumnDefinitions>
+    <Border x:Name="DropTargetBorder" Style="{StaticResource DropTargetStyle}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Orientation="Vertical">
+                <ItemsControl ItemsSource="{Binding Subjects}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="0,0,0,0">
+                                <Grid Height="60">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="1*"/>
+                                        <ColumnDefinition Width="1*"/>
+                                    </Grid.ColumnDefinitions>
 
-                                <TextBlock Grid.Column="0" Text="{Binding SubjectName}" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+                                    <!-- 과목명에 드래그 기능 추가 -->
+                                    <TextBlock Grid.Column="0" Text="{Binding SubjectName}" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"
+                                               MouseLeftButtonDown="SubjectName_MouseLeftButtonDown"
+                                               MouseMove="SubjectName_MouseMove"
+                                               Background="Transparent"/>
 
-                                <Border Grid.Column="1" Height="20" VerticalAlignment="Center">
-                                    <Grid>
-                                        <Rectangle Fill="#DDDDDD"/>
-                                        <Rectangle Fill="Black" HorizontalAlignment="Right" Width="{Binding ProgressWidth}" />
-                                    </Grid>
-                                </Border>
-                            </Grid>
+                                    <Border Grid.Column="1" Height="20" VerticalAlignment="Center"
+                                            ToolTip="{Binding Tooltip}">
+                                        <Grid>
+                                            <Rectangle Fill="#DDDDDD"/>
+                                            <Rectangle Fill="Black" HorizontalAlignment="Right" Width="{Binding ProgressWidth}" />
+                                        </Grid>
+                                    </Border>
+                                </Grid>
 
-                            <ItemsControl ItemsSource="{Binding TopicGroups}" Margin="10,0,0,0">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel>
-                                            <ItemsControl ItemsSource="{Binding Topics}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Grid Height="60">
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="Auto"/>
-                                                                <ColumnDefinition Width="1*"/>
-                                                                <ColumnDefinition Width="1*"/>
-                                                            </Grid.ColumnDefinitions>
+                                <ItemsControl ItemsSource="{Binding TopicGroups}" Margin="10,0,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel>
+                                                <ItemsControl ItemsSource="{Binding Topics}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Grid Height="60">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                    <ColumnDefinition Width="1*"/>
+                                                                    <ColumnDefinition Width="1*"/>
+                                                                </Grid.ColumnDefinitions>
 
+<<<<<<< HEAD
 <<<<<<< Updated upstream
                                                             <CheckBox Width="20" Height="20" Style="{StaticResource ToDoCheckBoxStyle}"
                                                                       VerticalAlignment="Center" Margin="0,0,10,0"/>
@@ -94,28 +117,34 @@
                                                                 <CheckBox Width="20" Height="20"Style="{StaticResource ToDoCheckBoxStyle}"
                                                                           VerticalAlignment="Center" Margin="0,0,10,0"/>
 >>>>>>> Stashed changes
+=======
+                                                                <CheckBox Width="20" Height="20" Style="{StaticResource ToDoCheckBoxStyle}"
+                                                                          VerticalAlignment="Center" Margin="0,0,10,0"/>
+>>>>>>> 624f03b473237ab5ecfd5c52cc3b3d95e280b244
 
-                                                            <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="Bold" FontSize="14" VerticalAlignment="Center"/>
+                                                                <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="Bold" FontSize="14" VerticalAlignment="Center"/>
 
-                                                            <Border Grid.Column="2" Height="20" VerticalAlignment="Center">
-                                                                <Grid>
-                                                                    <Rectangle Fill="#EEEEEE"/>
-                                                                    <Rectangle Fill="Black" HorizontalAlignment="Right"
-                                                                               Width="{Binding Progress, Converter={StaticResource ProgressToWidthConverter}, ConverterParameter=200}"/>
-                                                                </Grid>
-                                                            </Border>
-                                                        </Grid>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </StackPanel>
-    </ScrollViewer>
+                                                                <Border Grid.Column="2" Height="20" VerticalAlignment="Center"
+                                                                        ToolTip="{Binding ProgressTooltip}">
+                                                                    <Grid>
+                                                                        <Rectangle Fill="#EEEEEE"/>
+                                                                        <Rectangle Fill="Black" HorizontalAlignment="Right"
+                                                                                   Width="{Binding Progress, Converter={StaticResource ProgressToWidthConverter}, ConverterParameter=200}"/>
+                                                                    </Grid>
+                                                                </Border>
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </ScrollViewer>
+    </Border>
 </UserControl>

@@ -1,18 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
-using SP.Modules.Daily.ViewModels;
+﻿using System.Windows.Controls;
 
 namespace SP.Modules.Daily.Views
 {
@@ -21,13 +7,10 @@ namespace SP.Modules.Daily.Views
     /// </summary>
     public partial class TodoListView : UserControl
     {
-        public TodoListView(DateTime date)
+        public TodoListView()
         {
             InitializeComponent();
-            DataContext = new TodoListViewModel(date);
+            // DataContext 설정 제거 - 부모로부터 상속받음
         }
-
-        public TodoListView() : this(DateTime.Today) { }
     }
-
 }

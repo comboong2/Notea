@@ -63,11 +63,58 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <common:SubjectProgressListView Grid.Row="0" Subjects="{Binding Subjects}" Margin="20,0"/>
+            <common:SubjectProgressListView Grid.Row="0" 
+                                            Subjects="{Binding Subjects}" 
+                                            DataContext="{Binding}"
+                                            Margin="20,0"/>
 
             <Border Background="#555555" Height="2" VerticalAlignment="Bottom" Margin="0,0,0,0"/>
 
-            <daily:TodoListView Grid.Row="1" Margin="20,0" />
+            <!-- TodoList를 직접 여기에 구현 -->
+            <Grid Grid.Row="1" Margin="20,0">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="300">
+                    <ItemsControl ItemsSource="{Binding TodoList}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                    <!-- 체크 박스 -->
+                                    <CheckBox Width="20" Height="20"
+                                              IsChecked="{Binding IsCompleted, Mode=TwoWay}"
+                                              Style="{StaticResource ToDoCheckBoxStyle}"
+                                              VerticalAlignment="Center"
+                                              Margin="0,0,10,0" />
+
+                                    <!-- 텍스트: 체크 여부에 따라 취소선 -->
+                                    <TextBlock Text="{Binding Title}" FontSize="16" VerticalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="TextDecorations" Value="{x:Null}" />
+                                                <Setter Property="Foreground" Value="Black" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsCompleted}" Value="True">
+                                                        <Setter Property="TextDecorations" Value="Strikethrough" />
+                                                        <Setter Property="Foreground" Value="Gray" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+
+                                        <!-- 삭제 메뉴 - x:Name으로 직접 참조 -->
+                                        <TextBlock.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="삭제"
+                                                          Click="DeleteTodo_Click"
+                                                          Tag="{Binding}" />
+                                            </ContextMenu>
+                                        </TextBlock.ContextMenu>
+
+                                    </TextBlock>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
 
             <Grid Grid.Row="2" Margin="0,10,0,0" Height="60">
                 <Grid.RowDefinitions>

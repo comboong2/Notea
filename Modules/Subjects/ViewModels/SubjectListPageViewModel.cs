@@ -4,17 +4,22 @@ using SP.ViewModels;
 using System.Collections.ObjectModel;
 using System.Windows.Input;
 
-
 namespace SP.Modules.Subjects.ViewModels
 {
     public class SubjectListPageViewModel : ViewModelBase
     {
+<<<<<<< HEAD
 <<<<<<< Updated upstream
 =======
         // 싱글톤 인스턴스 사용
         private readonly DatabaseHelper _db = DatabaseHelper.Instance;
 
 >>>>>>> Stashed changes
+=======
+        // 싱글톤 DB 헬퍼 사용
+        private readonly DatabaseHelper _db = DatabaseHelper.Instance;
+
+>>>>>>> 624f03b473237ab5ecfd5c52cc3b3d95e280b244
         public ObservableCollection<SubjectGroupViewModel> Subjects { get; set; } = new();
 
         private bool _isAdding;
@@ -38,7 +43,6 @@ namespace SP.Modules.Subjects.ViewModels
             set => SetProperty(ref _newSubjectText, value);
         }
 
-
         public SubjectListPageViewModel()
         {
             Subjects = new ObservableCollection<SubjectGroupViewModel>();
@@ -50,10 +54,8 @@ namespace SP.Modules.Subjects.ViewModels
             {
                 if (!string.IsNullOrWhiteSpace(NewSubjectText))
                 {
-                    var helper = new DatabaseHelper();
-
                     // DB에 저장
-                    int subjectId = helper.AddSubject(NewSubjectText);
+                    int subjectId = _db.AddSubject(NewSubjectText);
 
                     // ViewModel에 추가
                     Subjects.Add(new SubjectGroupViewModel
@@ -72,12 +74,19 @@ namespace SP.Modules.Subjects.ViewModels
                 }
             });
         }
+<<<<<<< HEAD
 <<<<<<< Updated upstream
         private void LoadSubjects()
         {
             var helper = new DatabaseHelper();
             var subjectList = helper.LoadSubjectsWithGroups(); // 이 메서드 구현 필요
 =======
+=======
+
+        private void LoadSubjects()
+        {
+            var subjectList = _db.LoadSubjectsWithGroups();
+>>>>>>> 624f03b473237ab5ecfd5c52cc3b3d95e280b244
 
         // ✅ 실제 DB에서 과목 로드 (더미 데이터 제거)
         private void LoadSubjects()
@@ -95,6 +104,7 @@ namespace SP.Modules.Subjects.ViewModels
                 Subjects.Add(subject);
             }
         }
+<<<<<<< HEAD
 
 <<<<<<< Updated upstream
 =======
@@ -117,6 +127,7 @@ namespace SP.Modules.Subjects.ViewModels
             LoadSubjects();
         }
 >>>>>>> Stashed changes
+=======
+>>>>>>> 624f03b473237ab5ecfd5c52cc3b3d95e280b244
     }
-
 }

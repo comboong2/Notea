@@ -9,6 +9,8 @@ namespace SP.Modules.Subjects.ViewModels
     {
         public string GroupTitle { get; set; } = string.Empty;
 
+        public string ParentSubjectName { get; set; } = string.Empty;
+
         public ObservableCollection<TopicItem> Topics { get; set; } = new();
 
         private bool _isExpanded = true;

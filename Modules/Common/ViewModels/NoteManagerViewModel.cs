@@ -13,7 +13,7 @@ namespace SP.Modules.Common.ViewModels
 {
     public class NoteManagerViewModel : ViewModelBase
     {
-        private readonly DatabaseHelper _db = new();
+        private readonly DatabaseHelper _db = DatabaseHelper.Instance;
 
         public ObservableCollection<Note> Notes { get; } = new();
 

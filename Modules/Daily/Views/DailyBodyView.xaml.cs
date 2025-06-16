@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using SP.Modules.Daily.Models;
 using SP.Modules.Daily.ViewModels;
 
 namespace SP.Modules.Daily.Views
@@ -64,6 +65,30 @@ namespace SP.Modules.Daily.Views
                 // Window로 포커스 이동 (점선 없음)
                 Keyboard.ClearFocus();
                 e.Handled = true;
+            }
+        }
+        // Todo 삭제 Click 이벤트 핸들러 추가
+        private void DeleteTodo_Click(object sender, RoutedEventArgs e)
+        {
+            System.Diagnostics.Debug.WriteLine("[Todo] DeleteTodo_Click 이벤트 발생");
+
+            if (sender is MenuItem menuItem && menuItem.Tag is TodoItem todo)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Todo] 삭제 대상: {todo.Title} (ID: {todo.Id})");
+
+                if (DataContext is DailyBodyViewModel vm)
+                {
+                    vm.DeleteTodoItem(todo);
+                    System.Diagnostics.Debug.WriteLine("[Todo] ViewModel의 DeleteTodoItem 호출 완료");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine("[Todo] DataContext가 DailyBodyViewModel이 아닙니다.");
+                }
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("[Todo] MenuItem이나 Tag(TodoItem)를 찾을 수 없습니다.");
             }
         }
     }

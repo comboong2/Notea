@@ -15,12 +15,17 @@ namespace SP.Modules.Daily.ViewModels
         // TODO 리스트
         public ObservableCollection<TodoItem> TodoList { get; set; }
 
+<<<<<<< HEAD
 <<<<<<< Updated upstream
         private readonly DatabaseHelper _db = new();
 =======
         // 싱글톤 인스턴스 사용
         private readonly DatabaseHelper _db = DatabaseHelper.Instance;
 >>>>>>> Stashed changes
+=======
+        // 싱글톤 DB 헬퍼 사용
+        private readonly DatabaseHelper _db = DatabaseHelper.Instance;
+>>>>>>> 624f03b473237ab5ecfd5c52cc3b3d95e280b244
 
         // 새 할 일 텍스트
         private string _newTodoText;
@@ -43,17 +48,23 @@ namespace SP.Modules.Daily.ViewModels
 
         public ICommand AddTodoCommand { get; }
         public ICommand StartAddCommand { get; }
+        public ICommand DeleteTodoCommand { get; }
 
         public DailyBodyViewModel(DateTime appStartDate)
         {
             SelectedDate = appStartDate;
 
+<<<<<<< HEAD
 <<<<<<< Updated upstream
             Subjects = new ObservableCollection<SubjectProgressViewModel>
             {
                 new SubjectProgressViewModel { SubjectName = "자료구조", Progress = 0.4 },
                 new SubjectProgressViewModel { SubjectName = "인공지능", Progress = 0.7 }
             };
+=======
+            // 빈 컬렉션으로 시작
+            Subjects = new ObservableCollection<SubjectProgressViewModel>();
+>>>>>>> 624f03b473237ab5ecfd5c52cc3b3d95e280b244
 
 =======
             Subjects = new ObservableCollection<SubjectProgressViewModel>();
@@ -66,7 +77,9 @@ namespace SP.Modules.Daily.ViewModels
                 IsAdding = true;
                 RequestFocusOnInput?.Invoke();
             });
+            DeleteTodoCommand = new RelayCommand<TodoItem>(DeleteTodo);
 
+<<<<<<< HEAD
 <<<<<<< Updated upstream
             // comment,TodoList 불러오기
             LoadDailyData(SelectedDate);
@@ -75,7 +88,24 @@ namespace SP.Modules.Daily.ViewModels
             LoadDailyData(SelectedDate);
             LoadSubjectsProgress();
 >>>>>>> Stashed changes
+=======
+            // comment, TodoList, DailySubjects 불러오기
+            LoadDailyData(SelectedDate);
+
+            // CollectionChanged 이벤트를 맨 마지막에 연결
+            Subjects.CollectionChanged += Subjects_CollectionChanged;
+>>>>>>> 624f03b473237ab5ecfd5c52cc3b3d95e280b244
         }
+
+        private void Subjects_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        {
+            // 무한 루프 방지를 위한 플래그 체크
+            if (_isLoadingSubjects) return;
+
+            SaveDailySubjects();
+        }
+
+        private bool _isLoadingSubjects = false;
 
         private void AddTodo()
         {
@@ -91,13 +121,52 @@ namespace SP.Modules.Daily.ViewModels
                     IsCompleted = false
                 };
 
+                // PropertyChanged 이벤트 구독
+                newItem.PropertyChanged += (s, e) =>
+                {
+                    if (e.PropertyName == nameof(TodoItem.IsCompleted))
+                    {
+                        _db.UpdateTodoCompletion(newItem.Id, newItem.IsCompleted);
+                    }
+                };
+
                 TodoList.Add(newItem);
                 NewTodoText = string.Empty;
             }
             IsAdding = false;
         }
 
+<<<<<<< HEAD
 <<<<<<< Updated upstream
+=======
+        private void DeleteTodo(TodoItem todo)
+        {
+            if (todo == null)
+            {
+                System.Diagnostics.Debug.WriteLine("[Todo] 삭제할 Todo가 null입니다.");
+                return;
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[Todo] Todo 삭제 시도: {todo.Title} (ID: {todo.Id})");
+
+            try
+            {
+                _db.DeleteTodo(todo.Id);
+                TodoList.Remove(todo);
+                System.Diagnostics.Debug.WriteLine($"[Todo] Todo 삭제 완료: {todo.Title}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Todo] Todo 삭제 오류: {ex.Message}");
+            }
+        }
+
+        // DailyBodyView.xaml.cs에서 호출할 수 있도록 public으로 변경
+        public void DeleteTodoItem(TodoItem todo)
+        {
+            DeleteTodo(todo);
+        }
+>>>>>>> 624f03b473237ab5ecfd5c52cc3b3d95e280b244
 
 =======
 >>>>>>> Stashed changes
@@ -119,15 +188,16 @@ namespace SP.Modules.Daily.ViewModels
         {
             SelectedDate = date;
 
-            System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] LoadDailyData 호출됨. 날짜: {date.ToShortDateString()}"); // ★★★ 디버그 출력 추가 ★★★
+            System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] LoadDailyData 호출됨. 날짜: {date.ToShortDateString()}");
 
             // Comment 불러오기
             Comment = _db.GetCommentByDate(date);
-            System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] Comment 로드됨: '{Comment}'"); // ★★★ 디버그 출력 추가 ★★★
+            System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] Comment 로드됨: '{Comment}'");
 
+            // TodoList 불러오기
             var todos = _db.GetTodosByDate(date);
             TodoList.Clear();
-            System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 투두 항목 {todos.Count}개 DB에서 로드됨."); // ★★★ 디버그 출력 추가 ★★★
+            System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 투두 항목 {todos.Count}개 DB에서 로드됨.");
 
             foreach (var todo in todos)
             {
@@ -142,6 +212,7 @@ namespace SP.Modules.Daily.ViewModels
 
                 TodoList.Add(todo);
             }
+<<<<<<< HEAD
 <<<<<<< Updated upstream
             System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] TodoList에 {TodoList.Count}개 항목 추가됨."); // ★★★ 디버그 출력 추가 ★★★
         }
@@ -174,12 +245,75 @@ namespace SP.Modules.Daily.ViewModels
             System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 과목 진행률 {Subjects.Count}개 로드됨.");
         }
 >>>>>>> Stashed changes
+=======
+            System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] TodoList에 {TodoList.Count}개 항목 추가됨.");
+
+            // 오늘 할 일 과목 리스트 불러오기
+            LoadDailySubjects(date);
+        }
+
+        private void LoadDailySubjects(DateTime date)
+        {
+            _isLoadingSubjects = true; // 무한 루프 방지 플래그 설정
+
+            var dailySubjects = _db.GetDailySubjects(date);
+
+            Subjects.Clear();
+            foreach (var (subjectName, progress, studyTimeMinutes) in dailySubjects)
+            {
+                Subjects.Add(new SubjectProgressViewModel
+                {
+                    SubjectName = subjectName,
+                    Progress = progress,
+                    StudyTimeMinutes = studyTimeMinutes
+                });
+            }
+
+            _isLoadingSubjects = false; // 플래그 해제
+
+            System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 오늘 할 일 과목 {Subjects.Count}개 로드됨");
+        }
+
+        private void SaveDailySubjects()
+        {
+            try
+            {
+                // 기존 데이터 삭제 후 다시 저장 (간단한 방법)
+                for (int i = 0; i < Subjects.Count; i++)
+                {
+                    var subject = Subjects[i];
+                    _db.SaveDailySubject(SelectedDate, subject.SubjectName, subject.Progress, subject.StudyTimeMinutes, i);
+                }
+                System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 오늘 할 일 과목 저장 완료: {Subjects.Count}개");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 오늘 할 일 과목 저장 오류: {ex.Message}");
+            }
+        }
+
+        public void AddSubjectSafely(SubjectProgressViewModel subject)
+        {
+            if (subject == null) return;
+
+            // 중복 확인
+            var existingSubject = Subjects.FirstOrDefault(s =>
+                string.Equals(s.SubjectName, subject.SubjectName, StringComparison.OrdinalIgnoreCase));
+
+            if (existingSubject == null)
+            {
+                Subjects.Add(subject);
+            }
+        }
+
+
+>>>>>>> 624f03b473237ab5ecfd5c52cc3b3d95e280b244
 
         public string InfoTitle => IsToday ? "시험" : "총 학습 시간";
         public string InfoContent => IsToday ? $"D-{Dday}" : TotalStudyTime;
 
         public bool IsToday => SelectedDate.Date == DateTime.Today;
-        
+
         private DateTime _selectedDate;
         public DateTime SelectedDate
         {
@@ -190,7 +324,6 @@ namespace SP.Modules.Daily.ViewModels
                 {
                     // 날짜가 바뀌면 Comment를 다시 불러오고, 할 일도 갱신하도록 처리
                     Comment = _db.GetCommentByDate(value);
-                    // TodoList = new ObservableCollection<TodoItem>(_db.GetTodosByDate(value)); // 추후 확장
                 }
             }
         }
