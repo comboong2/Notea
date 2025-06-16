@@ -22,7 +22,7 @@ namespace SP.Modules.Subjects.Models
             }
         }
 
-        private double _progress;
+        private double _progress=0.0;
         public double Progress
         {
             get => _progress;
@@ -30,7 +30,7 @@ namespace SP.Modules.Subjects.Models
             {
                 if (_progress != value)
                 {
-                    _progress = value;
+                    _progress = Math.Max(0.0, Math.Min(1.0, value)); // 0-1 사이로 제한;
                     OnPropertyChanged(nameof(Progress));
                     OnPropertyChanged(nameof(ProgressTooltip));
                     OnPropertyChanged(nameof(StudyTimeText));
@@ -51,9 +51,19 @@ namespace SP.Modules.Subjects.Models
                     OnPropertyChanged(nameof(StudyTimeMinutes));
                     OnPropertyChanged(nameof(ProgressTooltip));
                     OnPropertyChanged(nameof(StudyTimeText));
+
+                    //  학습 시간에 따라 Progress 자동 계산 (예: 120분 = 100%)
+                    if (_studyTimeMinutes > 0)
+                    {
+                        Progress = Math.Min(1.0, _studyTimeMinutes / 120.0);
+                    }
                 }
             }
         }
+
+        //  드래그 앤 드롭을 위한 부모 정보
+        public string ParentTopicGroupName { get; set; } = string.Empty;
+        public string ParentSubjectName { get; set; } = string.Empty;
 
         // Progress Bar Tooltip
         public string ProgressTooltip
