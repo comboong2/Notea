@@ -133,19 +133,20 @@ namespace SP.Modules.Common.Views
 
                 if (subjectToRemove != null)
                 {
-                    // MainViewModel을 통해 DailyBodyViewModel에 접근
+                    // 공유 데이터에서 제거
                     if (Window.GetWindow(this)?.DataContext is MainViewModel mainVM)
                     {
-                        if (mainVM.BodyContent is DailyBodyView dailyBodyView &&
-                            dailyBodyView.DataContext is DailyBodyViewModel dailyBodyVM)
-                        {
-                            // DB에서도 삭제
-                            var dbHelper = DatabaseHelper.Instance;
-                            dbHelper.RemoveDailySubject(dailyBodyVM.SelectedDate, subjectToRemove.SubjectName);
+                        var existingSubject = mainVM.SharedSubjectProgress.FirstOrDefault(s =>
+                            string.Equals(s.SubjectName, subjectToRemove.SubjectName, StringComparison.OrdinalIgnoreCase));
 
-                            // UI에서 제거
-                            dailyBodyVM.Subjects.Remove(subjectToRemove);
-                            System.Diagnostics.Debug.WriteLine($"[DragDrop] 과목 '{subjectToRemove.SubjectName}' 제거됨");
+                        if (existingSubject != null)
+                        {
+                            mainVM.SharedSubjectProgress.Remove(existingSubject);
+                            System.Diagnostics.Debug.WriteLine($"[DragDrop] 공유 데이터에서 과목 '{subjectToRemove.SubjectName}' 제거됨");
+
+                            // DB에서도 제거
+                            var dbHelper = DatabaseHelper.Instance;
+                            dbHelper.RemoveDailySubject(DateTime.Today, subjectToRemove.SubjectName);
                         }
                     }
                 }
