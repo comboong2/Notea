@@ -633,8 +633,10 @@ namespace SP.Modules.Common.Helpers
             System.Diagnostics.Debug.WriteLine($"[DB] TopicGroup '{topicGroup.GroupTitle}'에 {topicGroup.Topics.Count}개 TopicItem 로드됨");
         }
 
-        // ===== 학습 시간 관련 메소드들 (초단위) =====
-        public void SaveStudySession(DateTime startTime, DateTime endTime, int durationSeconds)
+
+        // ✅ 먼저 5개 인수를 받는 메서드 정의
+        public void SaveStudySession(DateTime startTime, DateTime endTime, int durationSeconds,
+            string subjectName = null, string topicGroupName = null)
         {
             ExecuteWithRetry(() =>
             {
@@ -646,18 +648,26 @@ namespace SP.Modules.Common.Helpers
                         conn.Open();
                         using var cmd = conn.CreateCommand();
                         cmd.CommandText = @"
-                            INSERT INTO StudySession (StartTime, EndTime, DurationSeconds, Date)
-                            VALUES (@startTime, @endTime, @duration, @date)";
+                    INSERT INTO StudySession (StartTime, EndTime, DurationSeconds, Date, SubjectName, TopicGroupName)
+                    VALUES (@startTime, @endTime, @duration, @date, @subjectName, @topicGroupName)";
 
                         var dateString = startTime.ToString("yyyy-MM-dd");
                         cmd.Parameters.AddWithValue("@startTime", startTime.ToString("yyyy-MM-dd HH:mm:ss"));
                         cmd.Parameters.AddWithValue("@endTime", endTime.ToString("yyyy-MM-dd HH:mm:ss"));
                         cmd.Parameters.AddWithValue("@duration", durationSeconds);
                         cmd.Parameters.AddWithValue("@date", dateString);
+                        cmd.Parameters.AddWithValue("@subjectName", subjectName ?? (object)DBNull.Value);
+                        cmd.Parameters.AddWithValue("@topicGroupName", topicGroupName ?? (object)DBNull.Value);
 
                         cmd.ExecuteNonQuery();
 
-                        System.Diagnostics.Debug.WriteLine($"[DB] 학습 세션 저장 성공: {durationSeconds}초, 날짜: {dateString}");
+                        var logMsg = $"[DB] 학습 세션 저장: {durationSeconds}초";
+                        if (!string.IsNullOrEmpty(subjectName))
+                            logMsg += $", 과목: {subjectName}";
+                        if (!string.IsNullOrEmpty(topicGroupName))
+                            logMsg += $", 분류: {topicGroupName}";
+
+                        System.Diagnostics.Debug.WriteLine(logMsg);
                     }
                     catch (Exception ex)
                     {
@@ -665,6 +675,12 @@ namespace SP.Modules.Common.Helpers
                     }
                 }
             });
+        }
+
+        // ✅ 기존 3개 인수 메서드 (호환성 유지) - 5개 인수 메서드 호출
+        public void SaveStudySession(DateTime startTime, DateTime endTime, int durationSeconds)
+        {
+            SaveStudySession(startTime, endTime, durationSeconds, null, null);
         }
 
         // ✅ 수정: GetTotalStudyTimeSeconds(DateTime date) 오버로드 추가
@@ -1031,7 +1047,7 @@ namespace SP.Modules.Common.Helpers
 
                         try
                         {
-                            // DailySubject 삭제
+                            // ✅ DailySubject만 삭제 (오늘 할 일 목록에서만 제거)
                             using var cmd = conn.CreateCommand();
                             cmd.Transaction = transaction;
                             cmd.CommandText = "DELETE FROM DailySubject WHERE Date = @date AND SubjectName = @subjectName";
@@ -1039,7 +1055,7 @@ namespace SP.Modules.Common.Helpers
                             cmd.Parameters.AddWithValue("@subjectName", subjectName);
                             cmd.ExecuteNonQuery();
 
-                            // 관련 DailyTopicGroup 삭제
+                            // ✅ 관련 DailyTopicGroup 삭제 (오늘 할 일에서만 제거)
                             using var groupCmd = conn.CreateCommand();
                             groupCmd.Transaction = transaction;
                             groupCmd.CommandText = "DELETE FROM DailyTopicGroup WHERE Date = @date AND SubjectName = @subjectName";
@@ -1047,7 +1063,7 @@ namespace SP.Modules.Common.Helpers
                             groupCmd.Parameters.AddWithValue("@subjectName", subjectName);
                             groupCmd.ExecuteNonQuery();
 
-                            // 관련 DailyTopicItem 삭제
+                            // ✅ 관련 DailyTopicItem 삭제 (오늘 할 일에서만 제거)
                             using var itemCmd = conn.CreateCommand();
                             itemCmd.Transaction = transaction;
                             itemCmd.CommandText = "DELETE FROM DailyTopicItem WHERE Date = @date AND SubjectName = @subjectName";
@@ -1055,8 +1071,12 @@ namespace SP.Modules.Common.Helpers
                             itemCmd.Parameters.AddWithValue("@subjectName", subjectName);
                             itemCmd.ExecuteNonQuery();
 
+                            // ⚠️ 중요: StudySession은 삭제하지 않음!
+                            // StudySession 테이블은 실제 측정된 학습시간이므로 보존
+                            // Subject, TopicGroup, TopicItem 테이블도 기본 구조이므로 보존
+
                             transaction.Commit();
-                            System.Diagnostics.Debug.WriteLine($"[DB] 오늘 할 일 과목과 관련 데이터 삭제: {subjectName}");
+                            System.Diagnostics.Debug.WriteLine($"[DB] 오늘 할 일에서 과목 '{subjectName}' 제거됨 (실제 학습시간은 보존)");
                         }
                         catch
                         {
@@ -1066,12 +1086,11 @@ namespace SP.Modules.Common.Helpers
                     }
                     catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[DB] 오늘 할 일 과목 삭제 오류: {ex.Message}");
+                        System.Diagnostics.Debug.WriteLine($"[DB] 오늘 할 일 과목 제거 오류: {ex.Message}");
                     }
                 }
             });
         }
-
         public void RemoveAllDailySubjects(DateTime date)
         {
             ExecuteWithRetry(() =>
@@ -1086,29 +1105,32 @@ namespace SP.Modules.Common.Helpers
 
                         try
                         {
-                            // DailySubject 삭제
+                            // ✅ DailySubject만 삭제 (오늘 할 일 목록 전체 초기화)
                             using var cmd = conn.CreateCommand();
                             cmd.Transaction = transaction;
                             cmd.CommandText = "DELETE FROM DailySubject WHERE Date = @date";
                             cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
                             cmd.ExecuteNonQuery();
 
-                            // DailyTopicGroup 삭제
+                            // ✅ DailyTopicGroup 삭제 (오늘 할 일 관련 분류 전체 제거)
                             using var groupCmd = conn.CreateCommand();
                             groupCmd.Transaction = transaction;
                             groupCmd.CommandText = "DELETE FROM DailyTopicGroup WHERE Date = @date";
                             groupCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
                             groupCmd.ExecuteNonQuery();
 
-                            // DailyTopicItem 삭제
+                            // ✅ DailyTopicItem 삭제 (오늘 할 일 관련 토픽 전체 제거)
                             using var itemCmd = conn.CreateCommand();
                             itemCmd.Transaction = transaction;
                             itemCmd.CommandText = "DELETE FROM DailyTopicItem WHERE Date = @date";
                             itemCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
                             itemCmd.ExecuteNonQuery();
 
+                            // ⚠️ 중요: StudySession, Subject, TopicGroup, TopicItem은 삭제하지 않음!
+                            // 이들은 실제 측정 데이터 및 기본 구조이므로 보존
+
                             transaction.Commit();
-                            System.Diagnostics.Debug.WriteLine($"[DB] 해당 날짜의 모든 오늘 할 일 과목과 관련 데이터 삭제: {date:yyyy-MM-dd}");
+                            System.Diagnostics.Debug.WriteLine($"[DB] 해당 날짜의 모든 오늘 할 일 제거됨 (실제 학습시간은 보존): {date:yyyy-MM-dd}");
                         }
                         catch
                         {
@@ -1118,7 +1140,71 @@ namespace SP.Modules.Common.Helpers
                     }
                     catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[DB] 모든 오늘 할 일 과목 삭제 오류: {ex.Message}");
+                        System.Diagnostics.Debug.WriteLine($"[DB] 모든 오늘 할 일 제거 오류: {ex.Message}");
+                    }
+                }
+            });
+        }
+        // ✅ 새로운 메소드: 실제 학습시간까지 완전 삭제 (관리자 기능용)
+        public void CompletelyRemoveSubject(string subjectName)
+        {
+            ExecuteWithRetry(() =>
+            {
+                lock (_lockObject)
+                {
+                    try
+                    {
+                        using var conn = GetConnection();
+                        conn.Open();
+                        using var transaction = conn.BeginTransaction();
+
+                        try
+                        {
+                            // ⚠️ 경고: 이 메소드는 모든 데이터를 완전 삭제합니다!
+
+                            // 1. 모든 날짜의 DailySubject 삭제
+                            using var dailyCmd = conn.CreateCommand();
+                            dailyCmd.Transaction = transaction;
+                            dailyCmd.CommandText = "DELETE FROM DailySubject WHERE SubjectName = @subjectName";
+                            dailyCmd.Parameters.AddWithValue("@subjectName", subjectName);
+                            dailyCmd.ExecuteNonQuery();
+
+                            // 2. 모든 날짜의 DailyTopicGroup 삭제
+                            using var dailyGroupCmd = conn.CreateCommand();
+                            dailyGroupCmd.Transaction = transaction;
+                            dailyGroupCmd.CommandText = "DELETE FROM DailyTopicGroup WHERE SubjectName = @subjectName";
+                            dailyGroupCmd.Parameters.AddWithValue("@subjectName", subjectName);
+                            dailyGroupCmd.ExecuteNonQuery();
+
+                            // 3. 모든 날짜의 DailyTopicItem 삭제
+                            using var dailyItemCmd = conn.CreateCommand();
+                            dailyItemCmd.Transaction = transaction;
+                            dailyItemCmd.CommandText = "DELETE FROM DailyTopicItem WHERE SubjectName = @subjectName";
+                            dailyItemCmd.Parameters.AddWithValue("@subjectName", subjectName);
+                            dailyItemCmd.ExecuteNonQuery();
+
+                            // 4. Subject 테이블에서 삭제 (CASCADE로 TopicGroup, TopicItem도 자동 삭제)
+                            using var subjectCmd = conn.CreateCommand();
+                            subjectCmd.Transaction = transaction;
+                            subjectCmd.CommandText = "DELETE FROM Subject WHERE Name = @subjectName";
+                            subjectCmd.Parameters.AddWithValue("@subjectName", subjectName);
+                            subjectCmd.ExecuteNonQuery();
+
+                            // 5. StudySession은 과목별로 분류되어 있지 않으므로 삭제하지 않음
+                            //    (전체 학습시간은 모든 과목의 총합이므로)
+
+                            transaction.Commit();
+                            System.Diagnostics.Debug.WriteLine($"[DB] 과목 '{subjectName}' 완전 삭제됨 (주의: 복구 불가!)");
+                        }
+                        catch
+                        {
+                            transaction.Rollback();
+                            throw;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[DB] 과목 완전 삭제 오류: {ex.Message}");
                     }
                 }
             });
@@ -1148,6 +1234,220 @@ namespace SP.Modules.Common.Helpers
                     catch (Exception ex)
                     {
                         System.Diagnostics.Debug.WriteLine($"[DB] TopicGroup 체크 상태 업데이트 오류: {ex.Message}");
+                    }
+                }
+            });
+        }
+        // ✅ 새로운 메소드: 과목별 실제 측정 시간 계산 (StudySession 기반)
+        public int GetSubjectActualStudyTimeSeconds(DateTime date, string subjectName)
+        {
+            return ExecuteWithRetry(() =>
+            {
+                lock (_lockObject)
+                {
+                    try
+                    {
+                        using var conn = GetConnection();
+                        conn.Open();
+
+                        // ⚠️ 현재는 StudySession이 과목별로 분류되어 있지 않음
+                        // 추후 과목페이지 구현시 StudySession에 SubjectName 컬럼 추가 필요
+
+                        // 임시 방법: DailySubject가 있으면 그 값, 없으면 0
+                        using var cmd = conn.CreateCommand();
+                        cmd.CommandText = "SELECT COALESCE(StudyTimeSeconds, 0) FROM DailySubject WHERE Date = @date AND SubjectName = @subjectName";
+                        cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
+                        cmd.Parameters.AddWithValue("@subjectName", subjectName);
+
+                        var result = cmd.ExecuteScalar();
+                        int studyTimeSeconds = Convert.ToInt32(result);
+
+                        System.Diagnostics.Debug.WriteLine($"[DB] 과목 '{subjectName}' 실제 시간: {studyTimeSeconds}초");
+                        return studyTimeSeconds;
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[DB] 과목 실제 시간 조회 오류: {ex.Message}");
+                        return 0;
+                    }
+                }
+            });
+        }
+        // ✅ 향후 확장: StudySession 테이블에 SubjectName 추가시 사용할 메소드
+        public int GetSubjectActualStudyTimeSecondsFromSessions(DateTime date, string subjectName)
+        {
+            return ExecuteWithRetry(() =>
+            {
+                lock (_lockObject)
+                {
+                    try
+                    {
+                        using var conn = GetConnection();
+                        conn.Open();
+                        using var cmd = conn.CreateCommand();
+
+                        // ✅ 추후 StudySession 테이블 구조 변경시 사용
+                        cmd.CommandText = @"
+                    SELECT COALESCE(SUM(DurationSeconds), 0) 
+                    FROM StudySession 
+                    WHERE Date = @date AND SubjectName = @subjectName";
+                        cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
+                        cmd.Parameters.AddWithValue("@subjectName", subjectName);
+
+                        var result = cmd.ExecuteScalar();
+                        return Convert.ToInt32(result);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[DB] StudySession 기반 과목 시간 조회 오류: {ex.Message}");
+                        return 0;
+                    }
+                }
+            });
+        }
+        // ✅ 과목별 실제 측정된 일일 학습시간 조회 (StudySession 기반)
+        public int GetSubjectActualDailyTimeSeconds(DateTime date, string subjectName)
+        {
+            return ExecuteWithRetry(() =>
+            {
+                lock (_lockObject)
+                {
+                    try
+                    {
+                        using var conn = GetConnection();
+                        conn.Open();
+                        using var cmd = conn.CreateCommand();
+
+                        // StudySession에서 해당 과목의 실제 측정 시간 집계
+                        cmd.CommandText = @"
+                    SELECT COALESCE(SUM(DurationSeconds), 0) 
+                    FROM StudySession 
+                    WHERE Date = @date AND SubjectName = @subjectName";
+                        cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
+                        cmd.Parameters.AddWithValue("@subjectName", subjectName);
+
+                        var result = cmd.ExecuteScalar();
+                        int actualTime = Convert.ToInt32(result);
+
+                        System.Diagnostics.Debug.WriteLine($"[DB] 과목 '{subjectName}' 실제 측정 시간: {actualTime}초");
+                        return actualTime;
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[DB] 과목 실제 시간 조회 오류: {ex.Message}");
+                        return 0;
+                    }
+                }
+            });
+        }
+        // ✅ 분류별 실제 측정된 일일 학습시간 조회 (StudySession 기반)
+        // ✅ 디버그 강화된 분류별 실제 측정 시간 조회
+        public int GetTopicGroupActualDailyTimeSeconds(DateTime date, string subjectName, string topicGroupName)
+        {
+            return ExecuteWithRetry(() =>
+            {
+                lock (_lockObject)
+                {
+                    try
+                    {
+                        using var conn = GetConnection();
+                        conn.Open();
+
+                        // ✅ 1단계: 해당 과목의 모든 분류 데이터 확인
+                        using var debugCmd = conn.CreateCommand();
+                        debugCmd.CommandText = "SELECT Id, SubjectName, TopicGroupName, DurationSeconds FROM StudySession WHERE Date = @date AND SubjectName = @subjectName";
+                        debugCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
+                        debugCmd.Parameters.AddWithValue("@subjectName", subjectName);
+
+                        System.Diagnostics.Debug.WriteLine($"[DB] === {subjectName} 과목의 분류별 StudySession 데이터 ===");
+                        using (var debugReader = debugCmd.ExecuteReader())
+                        {
+                            while (debugReader.Read())
+                            {
+                                var id = debugReader["Id"];
+                                var dbSubject = debugReader["SubjectName"] ?? "NULL";
+                                var dbTopic = debugReader["TopicGroupName"] ?? "NULL";
+                                var duration = debugReader["DurationSeconds"];
+                                System.Diagnostics.Debug.WriteLine($"[DB] ID:{id}, Subject:{dbSubject}, TopicGroup:{dbTopic}, Duration:{duration}초");
+                            }
+                        }
+
+                        // ✅ 2단계: 특정 분류 시간 조회
+                        using var cmd = conn.CreateCommand();
+                        cmd.CommandText = @"
+                    SELECT COALESCE(SUM(DurationSeconds), 0) 
+                    FROM StudySession 
+                    WHERE Date = @date AND SubjectName = @subjectName AND TopicGroupName = @topicGroupName";
+                        cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
+                        cmd.Parameters.AddWithValue("@subjectName", subjectName);
+                        cmd.Parameters.AddWithValue("@topicGroupName", topicGroupName);
+
+                        var result = cmd.ExecuteScalar();
+                        int actualTime = Convert.ToInt32(result);
+
+                        System.Diagnostics.Debug.WriteLine($"[DB] ✅ 분류 '{subjectName}>{topicGroupName}' {date:yyyy-MM-dd} 실제 측정 시간: {actualTime}초");
+
+                        // ✅ 3단계: TopicGroupName이 NULL인 경우 대체 로직
+                        if (actualTime == 0)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[DB] ⚠️ '{topicGroupName}' 실제 시간이 0초입니다. DailyTopicGroup에서 확인합니다.");
+
+                            // DailyTopicGroup에서 백업 조회
+                            using var fallbackCmd = conn.CreateCommand();
+                            fallbackCmd.CommandText = "SELECT COALESCE(TotalStudyTimeSeconds, 0) FROM DailyTopicGroup WHERE Date = @date AND SubjectName = @subjectName AND GroupTitle = @groupTitle";
+                            fallbackCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
+                            fallbackCmd.Parameters.AddWithValue("@subjectName", subjectName);
+                            fallbackCmd.Parameters.AddWithValue("@groupTitle", topicGroupName);
+
+                            var fallbackResult = fallbackCmd.ExecuteScalar();
+                            int fallbackTime = Convert.ToInt32(fallbackResult);
+
+                            System.Diagnostics.Debug.WriteLine($"[DB] 📋 DailyTopicGroup에서 '{topicGroupName}' 시간: {fallbackTime}초");
+                            return fallbackTime;
+                        }
+
+                        return actualTime;
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[DB] ❌ 분류 실제 시간 조회 오류: {ex.Message}");
+                        return 0;
+                    }
+                }
+            });
+        }
+
+        // ✅ 드래그&드롭 삭제 후 과목이 다시 추가될 때 기존 시간 복원
+        public void RestoreSubjectToDaily(DateTime date, string subjectName)
+        {
+            ExecuteWithRetry(() =>
+            {
+                lock (_lockObject)
+                {
+                    try
+                    {
+                        // 1. 기존에 DailySubject가 있는지 확인
+                        var existingTime = GetDailySubjectStudyTimeSeconds(date, subjectName);
+
+                        if (existingTime == 0)
+                        {
+                            // 2. Subject 테이블에서 해당 과목의 누적 시간 가져오기
+                            var totalTime = GetSubjectTotalStudyTimeSeconds(subjectName);
+
+                            // 3. 임시로 일부 시간을 오늘 시간으로 설정 (테스트용)
+                            var todayTime = Math.Min(3600, totalTime); // 최대 1시간
+
+                            // 4. DailySubject에 복원
+                            if (todayTime > 0)
+                            {
+                                SaveDailySubject(date, subjectName, 0.0, todayTime, 0);
+                                System.Diagnostics.Debug.WriteLine($"[DB] 과목 '{subjectName}' 오늘 할 일에 복원됨: {todayTime}초");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[DB] 과목 복원 오류: {ex.Message}");
                     }
                 }
             });
