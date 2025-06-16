@@ -129,18 +129,27 @@ namespace SP.Modules.Daily.ViewModels
 
         private void Subjects_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
         {
-            // 🆕 더 강화된 플래그 체크
-            //if (_isLoadingSubjects || _isLoadingFromDatabase)
-            //{
-            //    System.Diagnostics.Debug.WriteLine("[DailyBodyViewModel] Subjects_CollectionChanged 무시됨 (로딩 중)");
-            //    return;
-            //}
+            // 디버그 로그 추가
+            System.Diagnostics.Debug.WriteLine($"[DEBUG] CollectionChanged - Action: {e.Action}, Count: {Subjects.Count}");
+            System.Diagnostics.Debug.WriteLine($"[DEBUG] Flags - Loading: {_isLoadingSubjects}, FromDB: {_isLoadingFromDatabase}");
 
-            //System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] Subjects_CollectionChanged 발생. 현재 개수: {Subjects.Count}");
-            //SaveDailySubjects();
+            // 호출 스택 확인 (처음 몇 줄만)
+            var stackTrace = Environment.StackTrace;
+            var lines = stackTrace.Split('\n').Take(5);
+            System.Diagnostics.Debug.WriteLine($"[DEBUG] Call Stack: {string.Join(" -> ", lines)}");
 
-            System.Diagnostics.Debug.WriteLine("[DailyBodyViewModel] SaveDailySubjects 호출됨 - 임시 비활성화");
-            return;
+            if (_isLoadingSubjects || _isLoadingFromDatabase)
+            {
+                System.Diagnostics.Debug.WriteLine("[DEBUG] ✅ 이벤트 차단됨");
+                return;
+            }
+
+            // Add 액션일 때만 저장
+            if (e.Action == NotifyCollectionChangedAction.Add)
+            {
+                System.Diagnostics.Debug.WriteLine("[DEBUG] ⚠️ SaveDailySubjects 호출 예정");
+                SaveDailySubjects();
+            }
         }
 
         private void AddTodo()
