@@ -1,57 +1,51 @@
-﻿using System.Collections.ObjectModel;
+﻿using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using SP.Modules.Common.Helpers;
 using SP.Modules.Daily.ViewModels;
+using SP.Modules.Daily.Views;
 using SP.Modules.Subjects.ViewModels;
+using SP.ViewModels;
 
 namespace SP.Modules.Common.Views
 {
-    public partial class SubjectProgressListView : UserControl
+    public partial class SubjectListView : UserControl
     {
         private Point _startPoint;
         private bool _isDragging = false;
 
-        public SubjectProgressListView()
+        public SubjectListView()
         {
             InitializeComponent();
         }
 
-        public ObservableCollection<SubjectProgressViewModel> Subjects
-        {
-            get => (ObservableCollection<SubjectProgressViewModel>)GetValue(SubjectsProperty);
-            set => SetValue(SubjectsProperty, value);
-        }
-
-        public static readonly DependencyProperty SubjectsProperty =
-            DependencyProperty.Register("Subjects", typeof(ObservableCollection<SubjectProgressViewModel>), typeof(SubjectProgressListView), new PropertyMetadata(null));
-
-        // 중앙 패널에서 좌측으로 드래그하기 위한 이벤트
-        private void SubjectName_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        // 과목 드래그 이벤트
+        private void SubjectGrid_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             _startPoint = e.GetPosition(null);
             _isDragging = false;
         }
 
-        private void SubjectName_MouseMove(object sender, MouseEventArgs e)
+        private void SubjectGrid_MouseMove(object sender, MouseEventArgs e)
         {
             if (e.LeftButton == MouseButtonState.Pressed && !_isDragging)
             {
                 Point mousePos = e.GetPosition(null);
                 Vector diff = _startPoint - mousePos;
 
-                if (System.Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance ||
-                    System.Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance)
+                if (Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance ||
+                    Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance)
                 {
                     _isDragging = true;
 
-                    var textBlock = sender as TextBlock;
-                    var subject = textBlock?.DataContext as SubjectProgressViewModel;
+                    var grid = sender as Grid;
+                    var subject = grid?.DataContext as SubjectGroupViewModel;
 
                     if (subject != null)
                     {
-                        var dragData = new DataObject("RemoveSubjectData", subject);
-                        DragDrop.DoDragDrop(textBlock, dragData, DragDropEffects.Move);
+                        var dragData = new DataObject("SubjectData", subject);
+                        DragDrop.DoDragDrop(grid, dragData, DragDropEffects.Copy);
                     }
 
                     _isDragging = false;
@@ -59,92 +53,104 @@ namespace SP.Modules.Common.Views
             }
         }
 
-        private void SubjectProgressListView_DragOver(object sender, DragEventArgs e)
+        // 분류(TopicGroup) 드래그 이벤트 추가
+        private void TopicGroup_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
-            if (e.Data.GetDataPresent("SubjectData"))
+            _startPoint = e.GetPosition(null);
+            _isDragging = false;
+        }
+
+        private void TopicGroup_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.LeftButton == MouseButtonState.Pressed && !_isDragging)
             {
-                e.Effects = DragDropEffects.Copy;
-                DropTargetBorder.Tag = "DragOver";
+                Point mousePos = e.GetPosition(null);
+                Vector diff = _startPoint - mousePos;
+
+                if (Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance ||
+                    Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance)
+                {
+                    _isDragging = true;
+
+                    var grid = sender as Grid;
+                    var topicGroup = grid?.DataContext as TopicGroupViewModel;
+
+                    if (topicGroup != null)
+                    {
+                        // 부모 과목명을 찾아서 설정
+                        var parentGrid = FindParent<Grid>(grid);
+                        while (parentGrid != null)
+                        {
+                            if (parentGrid.DataContext is SubjectGroupViewModel parentSubject)
+                            {
+                                topicGroup.ParentSubjectName = parentSubject.SubjectName;
+                                break;
+                            }
+                            parentGrid = FindParent<Grid>(parentGrid);
+                        }
+
+                        var dragData = new DataObject("TopicData", topicGroup);
+                        DragDrop.DoDragDrop(grid, dragData, DragDropEffects.Copy);
+                        System.Diagnostics.Debug.WriteLine($"[DragDrop] 분류 '{topicGroup.GroupTitle}' 드래그 시작 (부모: {topicGroup.ParentSubjectName})");
+                    }
+
+                    _isDragging = false;
+                }
+            }
+        }
+
+        // 부모 요소 찾기 헬퍼 메소드
+        private T FindParent<T>(DependencyObject child) where T : DependencyObject
+        {
+            DependencyObject parentObject = System.Windows.Media.VisualTreeHelper.GetParent(child);
+            if (parentObject == null) return null;
+
+            if (parentObject is T parent)
+                return parent;
+
+            return FindParent<T>(parentObject);
+        }
+
+        // 중앙에서 좌측으로 드래그된 과목을 받아서 삭제 처리
+        private void SubjectList_DragOver(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent("RemoveSubjectData"))
+            {
+                e.Effects = DragDropEffects.Move;
             }
             else
             {
                 e.Effects = DragDropEffects.None;
-                DropTargetBorder.Tag = null;
             }
             e.Handled = true;
         }
 
-        private void SubjectProgressListView_Drop(object sender, DragEventArgs e)
+        private void SubjectList_Drop(object sender, DragEventArgs e)
         {
-            DropTargetBorder.Tag = null;
-            System.Diagnostics.Debug.WriteLine("[DragDrop] Drop 이벤트 발생");
-
-            try
+            if (e.Data.GetDataPresent("RemoveSubjectData"))
             {
-                if (e.Data.GetDataPresent("SubjectData"))
+                var subjectToRemove = e.Data.GetData("RemoveSubjectData") as SubjectProgressViewModel;
+
+                if (subjectToRemove != null)
                 {
-                    var droppedSubject = e.Data.GetData("SubjectData") as SubjectGroupViewModel;
-                    System.Diagnostics.Debug.WriteLine($"[DragDrop] 드롭된 과목: {droppedSubject?.SubjectName}");
-
-                    if (droppedSubject != null && DataContext is DailyBodyViewModel dailyBodyVM)
+                    // 공유 데이터에서 제거
+                    if (Window.GetWindow(this)?.DataContext is MainViewModel mainVM)
                     {
-                        var newSubjectProgress = new SubjectProgressViewModel
-                        {
-                            SubjectName = droppedSubject.SubjectName,
-                            Progress = 0.0,
-                            StudyTimeMinutes = 0
-                        };
-
-                        // 안전한 추가 메소드 사용
-                        dailyBodyVM.AddSubjectSafely(newSubjectProgress);
-                    }
-                }
-                else if (e.Data.GetDataPresent("TopicData"))
-                {
-                    var droppedTopic = e.Data.GetData("TopicData") as TopicGroupViewModel;
-                    System.Diagnostics.Debug.WriteLine($"[DragDrop] 드롭된 분류: {droppedTopic?.GroupTitle} (부모: {droppedTopic?.ParentSubjectName})");
-
-                    if (droppedTopic != null && !string.IsNullOrEmpty(droppedTopic.ParentSubjectName) &&
-                        DataContext is DailyBodyViewModel dailyBodyVM)
-                    {
-                        // 부모 과목이 이미 있는지 확인
-                        var existingSubject = dailyBodyVM.Subjects.FirstOrDefault(s =>
-                            string.Equals(s.SubjectName, droppedTopic.ParentSubjectName, StringComparison.OrdinalIgnoreCase));
+                        var existingSubject = mainVM.SharedSubjectProgress.FirstOrDefault(s =>
+                            string.Equals(s.SubjectName, subjectToRemove.SubjectName, StringComparison.OrdinalIgnoreCase));
 
                         if (existingSubject != null)
                         {
-                            // 기존 과목에 분류 추가
-                            var existingTopic = existingSubject.TopicGroups.FirstOrDefault(t =>
-                                string.Equals(t.GroupTitle, droppedTopic.GroupTitle, StringComparison.OrdinalIgnoreCase));
+                            mainVM.SharedSubjectProgress.Remove(existingSubject);
+                            System.Diagnostics.Debug.WriteLine($"[DragDrop] 공유 데이터에서 과목 '{subjectToRemove.SubjectName}' 제거됨");
 
-                            if (existingTopic == null)
-                            {
-                                existingSubject.TopicGroups.Add(droppedTopic);
-                                System.Diagnostics.Debug.WriteLine($"[DragDrop] 기존 과목 '{droppedTopic.ParentSubjectName}'에 분류 '{droppedTopic.GroupTitle}' 추가됨");
-                            }
-                        }
-                        else
-                        {
-                            // 새 과목과 분류 함께 추가
-                            var newSubjectProgress = new SubjectProgressViewModel
-                            {
-                                SubjectName = droppedTopic.ParentSubjectName,
-                                Progress = 0.0,
-                                StudyTimeMinutes = 0
-                            };
-                            newSubjectProgress.TopicGroups.Add(droppedTopic);
-
-                            dailyBodyVM.AddSubjectSafely(newSubjectProgress);
-                            System.Diagnostics.Debug.WriteLine($"[DragDrop] 분류와 함께 과목 '{droppedTopic.ParentSubjectName}' 추가됨");
+                            // DB에서도 제거
+                            var dbHelper = DatabaseHelper.Instance;
+                            dbHelper.RemoveDailySubject(DateTime.Today, subjectToRemove.SubjectName);
                         }
                     }
                 }
             }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[DragDrop] 오류 발생: {ex.Message}");
-            }
-
             e.Handled = true;
         }
     }
