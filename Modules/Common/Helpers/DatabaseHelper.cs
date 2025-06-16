@@ -1304,6 +1304,26 @@ namespace SP.Modules.Common.Helpers
                 }
             });
         }
+        public int GetSubjectTotalStudyTime(string subjectName)
+        {
+            return ExecuteWithRetry(() =>
+            {
+                lock (_lockObject)
+                {
+                    using var conn = GetConnection();
+                    conn.Open();
+                    using var cmd = conn.CreateCommand();
+                    cmd.CommandText = "SELECT COALESCE(TotalStudyTime, 0) FROM Subject WHERE Name = @name";
+                    cmd.Parameters.AddWithValue("@name", subjectName);
+
+                    var result = cmd.ExecuteScalar();
+                    int totalTime = Convert.ToInt32(result);
+
+                    System.Diagnostics.Debug.WriteLine($"[DB] 과목 '{subjectName}' 총 학습시간: {totalTime}초");
+                    return totalTime;
+                }
+            });
+        }
 
         // IDisposable 구현 (메모리 누수 방지)
         public void Dispose()
@@ -1318,6 +1338,54 @@ namespace SP.Modules.Common.Helpers
             {
                 System.Diagnostics.Debug.WriteLine($"[DB] Dispose 오류: {ex.Message}");
             }
+        }
+        public int GetDailySubjectStudyTimeSeconds(DateTime date, string subjectName)
+        {
+            return ExecuteWithRetry(() =>
+            {
+                lock (_lockObject)
+                {
+                    using var conn = GetConnection();
+                    conn.Open();
+                    using var cmd = conn.CreateCommand();
+
+                    // DailySubject에서 StudyTimeMinutes를 초로 변환하여 반환
+                    cmd.CommandText = "SELECT COALESCE(StudyTimeMinutes * 60, 0) FROM DailySubject WHERE Date = @date AND SubjectName = @subjectName";
+                    cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
+                    cmd.Parameters.AddWithValue("@subjectName", subjectName);
+
+                    var result = cmd.ExecuteScalar();
+                    int studyTimeSeconds = Convert.ToInt32(result);
+
+                    System.Diagnostics.Debug.WriteLine($"[DB] {date:yyyy-MM-dd} 과목 '{subjectName}' 오늘 학습시간: {studyTimeSeconds}초");
+                    return studyTimeSeconds;
+                }
+            });
+        }
+
+        // ✅ 오늘의 분류별 학습시간 가져오기 (초 단위)
+        public int GetDailyTopicGroupStudyTimeSeconds(DateTime date, string subjectName, string groupTitle)
+        {
+            return ExecuteWithRetry(() =>
+            {
+                lock (_lockObject)
+                {
+                    using var conn = GetConnection();
+                    conn.Open();
+                    using var cmd = conn.CreateCommand();
+
+                    cmd.CommandText = "SELECT COALESCE(TotalStudyTime, 0) FROM DailyTopicGroup WHERE Date = @date AND SubjectName = @subjectName AND GroupTitle = @groupTitle";
+                    cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
+                    cmd.Parameters.AddWithValue("@subjectName", subjectName);
+                    cmd.Parameters.AddWithValue("@groupTitle", groupTitle);
+
+                    var result = cmd.ExecuteScalar();
+                    int studyTimeSeconds = Convert.ToInt32(result);
+
+                    System.Diagnostics.Debug.WriteLine($"[DB] {date:yyyy-MM-dd} 분류 '{groupTitle}' 오늘 학습시간: {studyTimeSeconds}초");
+                    return studyTimeSeconds;
+                }
+            });
         }
     }
 
@@ -1337,4 +1405,5 @@ namespace SP.Modules.Common.Helpers
         public int StudyTimeMinutes { get; set; }
         public bool IsCompleted { get; set; }
     }
+
 }

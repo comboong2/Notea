@@ -14,37 +14,94 @@ namespace SP.Modules.Daily.ViewModels
             set => SetProperty(ref _subjectName, value);
         }
 
-        private double _progress;
+        // ✅ 수정: Progress는 사용자가 직접 설정하는 값 (기존 유지)
+        private double _progress = 0.0; // 0.0 ~ 1.0 사이의 값
         public double Progress
         {
             get => _progress;
             set
             {
-                // 진행률은 0.0 ~ 1.0 사이 값으로 제한
                 var clampedValue = Math.Max(0.0, Math.Min(1.0, value));
                 if (SetProperty(ref _progress, clampedValue))
                 {
+                    // ✅ 추가: Progress 변경 시 다른 프로퍼티들도 업데이트
                     OnPropertyChanged(nameof(ProgressWidth));
-                    OnPropertyChanged(nameof(Tooltip));
                     OnPropertyChanged(nameof(ProgressPercentText));
-                    OnPropertyChanged(nameof(StudyTimeText));
-                    System.Diagnostics.Debug.WriteLine($"[Progress] {SubjectName} 진행률 업데이트: {_progress:P1}");
+                    OnPropertyChanged(nameof(Tooltip));
                 }
             }
         }
 
-        // 학습 시간 (분 단위로 저장)
-        private int _studyTimeMinutes;
-        public int StudyTimeMinutes
+        // ✅ 추가: 총 공부시간 설정을 위한 정적 변수
+        private static int _totalDailyStudyTimeSeconds = 0;
+
+        // ✅ 추가: 총 공부시간 설정 메소드 (외부에서 호출)
+        public static void SetTotalDailyStudyTime(int totalSeconds)
         {
-            get => _studyTimeMinutes;
+            _totalDailyStudyTimeSeconds = totalSeconds;
+            System.Diagnostics.Debug.WriteLine($"[SubjectProgress] 오늘 총 공부시간 설정: {totalSeconds}초");
+        }
+
+        // ✅ 추가: 실제 진행률 계산 (총 공부시간 대비)
+        public double ActualProgress
+        {
+            get
+            {
+                if (_totalDailyStudyTimeSeconds == 0)
+                    return 0.0;
+
+                var ratio = (double)TodayStudyTimeSeconds / _totalDailyStudyTimeSeconds;
+                System.Diagnostics.Debug.WriteLine($"[SubjectProgress] {SubjectName} 실제 진행률: {ratio:P2} ({TodayStudyTimeSeconds}/{_totalDailyStudyTimeSeconds})");
+                return Math.Min(1.0, ratio);
+            }
+        }
+
+        // ✅ 수정: 오늘의 학습 시간 (초 단위)
+        private int _todayStudyTimeSeconds;
+        public int TodayStudyTimeSeconds
+        {
+            get => _todayStudyTimeSeconds;
             set
             {
-                if (SetProperty(ref _studyTimeMinutes, value))
+                if (SetProperty(ref _todayStudyTimeSeconds, value))
                 {
-                    OnPropertyChanged(nameof(Tooltip));
                     OnPropertyChanged(nameof(StudyTimeText));
+                    OnPropertyChanged(nameof(ActualProgress)); // ✅ 추가: 실제 진행률 업데이트
+                    OnPropertyChanged(nameof(Tooltip));
+
+                    // ✅ TopicGroups에게 오늘의 부모 시간 알려주기
+                    UpdateTopicGroupsParentTime();
                 }
+            }
+        }
+
+        // ✅ 수정: 호환성을 위한 프로퍼티 (기존 코드들이 분 단위로 접근)
+        public int StudyTimeMinutes
+        {
+            get => TodayStudyTimeSeconds / 60;
+            set => TodayStudyTimeSeconds = value * 60;
+        }
+
+        // ✅ 삭제: 중복된 _studyTimeMinutes 필드 제거
+        // private int _studyTimeMinutes; // ❌ 삭제
+
+        // ✅ TopicGroups에게 부모의 오늘 학습시간 전달
+        private void UpdateTopicGroupsParentTime()
+        {
+            foreach (var topicGroup in TopicGroups)
+            {
+                topicGroup.SetParentTodayStudyTime(TodayStudyTimeSeconds);
+            }
+        }
+
+        public string StudyTimeText
+        {
+            get
+            {
+                var hours = TodayStudyTimeSeconds / 3600;
+                var minutes = (TodayStudyTimeSeconds % 3600) / 60;
+                var seconds = TodayStudyTimeSeconds % 60;
+                return $"{hours:D2}:{minutes:D2}:{seconds:D2}";
             }
         }
 
@@ -58,39 +115,25 @@ namespace SP.Modules.Daily.ViewModels
                 if (SetProperty(ref _maxWidth, value))
                 {
                     OnPropertyChanged(nameof(ProgressWidth));
+                    OnPropertyChanged(nameof(ActualProgressWidth)); // ✅ 추가
                 }
             }
         }
 
-        // 진행률 바 너비 계산
+        // ✅ 수정: 기존 Progress 기반 너비 (사용자 설정값)
         public double ProgressWidth => MaxWidth * Progress;
+
+        // ✅ 추가: 실제 진행률 기반 너비 (총 공부시간 대비)
+        public double ActualProgressWidth => MaxWidth * ActualProgress;
 
         // 진행률 퍼센트 텍스트 (진행률 바 위에 표시용)
         public string ProgressPercentText => $"{Progress:P0}";
 
-        // Tooltip에 표시될 시간 텍스트
-        public string Tooltip
-        {
-            get
-            {
-                var hours = StudyTimeMinutes / 60;
-                var minutes = StudyTimeMinutes % 60;
-                return $"{SubjectName}: {Progress:P1} - {hours:D2}:{minutes:D2}:{0:D2}";
-            }
-        }
+        // ✅ 추가: 실제 진행률 퍼센트 텍스트
+        public string ActualProgressPercentText => $"{ActualProgress:P0}";
 
-        // 🆕 학습 시간을 00:00:00 형식으로 표시 (과목용)
-        public string StudyTimeText
-        {
-            get
-            {
-                var totalSeconds = StudyTimeMinutes * 60;
-                var hours = totalSeconds / 3600;
-                var minutes = (totalSeconds % 3600) / 60;
-                var seconds = totalSeconds % 60;
-                return $"{hours:D2}:{minutes:D2}:{seconds:D2}";
-            }
-        }
+        // ✅ 수정: Tooltip에 실제 진행률 표시
+        public string Tooltip => $"{SubjectName}: {ActualProgress:P1} - {StudyTimeText}";
 
         // TopicGroup 리스트 (드래그 앤 드롭으로 추가된 분류들)
         public ObservableCollection<TopicGroupViewModel> TopicGroups { get; set; } = new();
@@ -103,7 +146,7 @@ namespace SP.Modules.Daily.ViewModels
         {
             // 초기값 설정
             Progress = 0.0;
-            StudyTimeMinutes = 0;
+            TodayStudyTimeSeconds = 0; // ✅ 수정: StudyTimeMinutes 대신 TodayStudyTimeSeconds 사용
 
             // TopicGroups 변경 감지 - 개선된 로직
             TopicGroups.CollectionChanged += (s, e) =>
@@ -122,7 +165,7 @@ namespace SP.Modules.Daily.ViewModels
             };
         }
 
-        // 🆕 DB에서 데이터를 업데이트할 때 사용하는 메소드 (무한루프 방지)
+        // ✅ 수정: DB에서 데이터를 업데이트할 때 사용하는 메소드 (무한루프 방지)
         public void UpdateFromDatabase(double progress, int studyTimeMinutes, ObservableCollection<TopicGroupViewModel> topicGroups)
         {
             _isUpdatingFromDatabase = true;
@@ -130,7 +173,7 @@ namespace SP.Modules.Daily.ViewModels
             {
                 // 기본 속성 업데이트
                 Progress = progress;
-                StudyTimeMinutes = studyTimeMinutes;
+                TodayStudyTimeSeconds = studyTimeMinutes * 60; // ✅ 수정: 분을 초로 변환
 
                 // TopicGroups 업데이트
                 TopicGroups.Clear();
@@ -139,7 +182,7 @@ namespace SP.Modules.Daily.ViewModels
                     TopicGroups.Add(group);
                 }
 
-                System.Diagnostics.Debug.WriteLine($"[SubjectProgress] {SubjectName} DB에서 업데이트됨: {TopicGroups.Count}개 그룹");
+                System.Diagnostics.Debug.WriteLine($"[SubjectProgress] {SubjectName} DB에서 업데이트됨: {TopicGroups.Count}개 그룹, 오늘시간: {TodayStudyTimeSeconds}초");
             }
             finally
             {
@@ -188,17 +231,14 @@ namespace SP.Modules.Daily.ViewModels
             Progress = newProgress;
         }
 
-        // 학습 시간 추가 메소드
-        public void AddStudyTime(int minutes)
+        // ✅ 수정: 학습 시간 추가 메소드 (초 단위로 변경)
+        public void AddStudyTime(int seconds)
         {
-            StudyTimeMinutes += Math.Max(0, minutes);
+            TodayStudyTimeSeconds += Math.Max(0, seconds);
 
-            // 학습 시간에 따른 자동 진행률 계산 (예: 120분 = 100%)
-            var calculatedProgress = Math.Min(1.0, StudyTimeMinutes / 120.0);
-            if (calculatedProgress > Progress)
-            {
-                Progress = calculatedProgress;
-            }
+            // ✅ 수정: 자동 진행률 계산 로직 제거 (사용자가 직접 설정)
+            // Progress는 사용자가 직접 설정하는 값으로 유지
+            System.Diagnostics.Debug.WriteLine($"[SubjectProgress] {SubjectName} 학습시간 추가: {seconds}초, 총: {TodayStudyTimeSeconds}초");
         }
 
         // TopicGroup 추가 메소드 - 개선됨
@@ -208,12 +248,15 @@ namespace SP.Modules.Daily.ViewModels
             {
                 topicGroup.ParentSubjectName = SubjectName; // 부모 정보 설정
 
+                // ✅ 추가: 부모의 오늘 학습시간 설정
+                topicGroup.SetParentTodayStudyTime(TodayStudyTimeSeconds);
+
                 // 🆕 직접 추가하지 않고 안전한 방법 사용
                 _isUpdatingFromDatabase = true;
                 try
                 {
                     TopicGroups.Add(topicGroup);
-                    System.Diagnostics.Debug.WriteLine($"[SubjectProgress] {SubjectName}에 TopicGroup '{topicGroup.GroupTitle}' 추가됨");
+                    System.Diagnostics.Debug.WriteLine($"[SubjectProgress] {SubjectName}에 TopicGroup '{topicGroup.GroupTitle}' 추가됨 (부모 오늘시간: {TodayStudyTimeSeconds}초)");
                 }
                 finally
                 {
@@ -241,10 +284,10 @@ namespace SP.Modules.Daily.ViewModels
             }
         }
 
-        // 과목 정보 요약
+        // ✅ 수정: 과목 정보 요약에 실제 진행률 추가
         public override string ToString()
         {
-            return $"{SubjectName} - {Progress:P1} ({StudyTimeText}) [TopicGroups: {TopicGroups.Count}]";
+            return $"{SubjectName} - Progress: {Progress:P1}, Actual: {ActualProgress:P1} ({StudyTimeText}) [TopicGroups: {TopicGroups.Count}]";
         }
     }
 }

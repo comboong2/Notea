@@ -290,23 +290,26 @@ namespace SP.Modules.Common.Views
 
                     if (existingSubject != null)
                     {
-                        // 🔄 기존 과목에 TopicGroup 추가 (중복 체크)
+                        // ✅ 기존 과목에 TopicGroup 추가 (중복 체크)
                         var existingTopic = existingSubject.TopicGroups.FirstOrDefault(t =>
                             string.Equals(t.GroupTitle, droppedTopic.GroupTitle, StringComparison.OrdinalIgnoreCase));
 
                         if (existingTopic == null)
                         {
-                            // 🆕 새로운 TopicGroup 생성 (Topics 제외)
+                            // ✅ 새로운 TopicGroup 생성
                             var newTopicGroup = new TopicGroupViewModel
                             {
                                 GroupTitle = droppedTopic.GroupTitle,
                                 ParentSubjectName = effectiveParentName,
-                                TotalStudyTime = droppedTopic.TotalStudyTime,
+                                TodayStudyTimeSeconds = 0, // ✅ 수정: 초기값 0초
                                 Topics = new ObservableCollection<SP.Modules.Subjects.Models.TopicItem>() // 빈 컬렉션
                             };
 
+                            // ✅ 수정: 부모의 오늘 학습시간 설정 (올바른 메소드 사용)
+                            newTopicGroup.SetParentTodayStudyTime(existingSubject.TodayStudyTimeSeconds);
+
                             existingSubject.TopicGroups.Add(newTopicGroup);
-                            System.Diagnostics.Debug.WriteLine($"[DragDrop] 기존 과목 '{effectiveParentName}'에 TopicGroup '{droppedTopic.GroupTitle}' 추가됨 (Topics 제외)");
+                            System.Diagnostics.Debug.WriteLine($"[DragDrop] 기존 과목 '{effectiveParentName}'에 TopicGroup '{droppedTopic.GroupTitle}' 추가됨 (부모 오늘시간: {existingSubject.TodayStudyTimeSeconds}초)");
                         }
                         else
                         {
@@ -315,31 +318,29 @@ namespace SP.Modules.Common.Views
                     }
                     else
                     {
-                        // 🆕 상위 과목이 없으면 과목과 TopicGroup 함께 추가 (Topics 제외)
+                        // ✅ 새 과목과 TopicGroup 함께 추가
                         var newSubjectProgress = new SubjectProgressViewModel
                         {
                             SubjectName = effectiveParentName,
-                            Progress = 0.05, // 테스트용 초기값
-                            StudyTimeMinutes = 15 // 테스트용 초기값
+                            Progress = 0.0, // ✅ 수정: 0.0으로 초기화
+                            TodayStudyTimeSeconds = 3600 // ✅ 수정: 기본값 1시간 (3600초)
                         };
 
-                        // 새로운 TopicGroup 생성 (Topics 제외)
+                        // ✅ 새로운 TopicGroup 생성
                         var newTopicGroup = new TopicGroupViewModel
                         {
                             GroupTitle = droppedTopic.GroupTitle,
                             ParentSubjectName = effectiveParentName,
-                            TotalStudyTime = droppedTopic.TotalStudyTime,
+                            TodayStudyTimeSeconds = 0, // ✅ 수정: 초기값 0초
                             Topics = new ObservableCollection<SP.Modules.Subjects.Models.TopicItem>() // 빈 컬렉션
                         };
 
+                        // ✅ 수정: 부모의 오늘 학습시간 설정
+                        newTopicGroup.SetParentTodayStudyTime(newSubjectProgress.TodayStudyTimeSeconds);
+
                         newSubjectProgress.TopicGroups.Add(newTopicGroup);
                         targetCollection.Add(newSubjectProgress);
-                        System.Diagnostics.Debug.WriteLine($"[DragDrop] 상위 과목이 없어서 과목 '{effectiveParentName}'과 TopicGroup '{droppedTopic.GroupTitle}'을 함께 추가함 (Topics 제외)");
                     }
-                }
-                else
-                {
-                    System.Diagnostics.Debug.WriteLine($"[DragDrop] TopicGroup '{droppedTopic.GroupTitle}'의 부모 과목명을 찾을 수 없음");
                 }
             }
         }

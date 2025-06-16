@@ -37,7 +37,7 @@
                                 <DataTemplate>
                                     <StackPanel>
                                         <!-- 토픽 그룹 제목 - 드래그 가능 -->
-                                        <Grid Height="50" VerticalAlignment="Center" Background="Transparent"
+                                        <Grid Height="60" VerticalAlignment="Center" Background="Transparent"
                                               MouseLeftButtonDown="TopicGroup_MouseLeftButtonDown"
                                               MouseMove="TopicGroup_MouseMove">
                                             <Grid.ColumnDefinitions>
@@ -54,8 +54,8 @@
                                         <ItemsControl ItemsSource="{Binding Topics}" Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVisibilityConverter}}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Grid Height="35" VerticalAlignment="Center" Background="Transparent">
-                                                        <TextBlock Text="{Binding Name}" Margin="40,0" FontSize="12" VerticalAlignment="Center"/>
+                                                    <Grid Height="60" VerticalAlignment="Center" Background="Transparent">
+                                                        <TextBlock Text="{Binding Name}" FontWeight="Bold" Margin="40,0" FontSize="14" VerticalAlignment="Center"/>
                                                     </Grid>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>

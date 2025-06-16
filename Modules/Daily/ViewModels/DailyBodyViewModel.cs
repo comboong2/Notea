@@ -2,6 +2,7 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Windows.Input;
 using SP.Modules.Common.Helpers;
 using SP.Modules.Daily.Models;
@@ -311,6 +312,15 @@ namespace SP.Modules.Daily.ViewModels
                     }
                     processedSubjects.Add(subjectName);
 
+                    int subjectTotalTimeSeconds = _db.GetSubjectTotalStudyTime(subjectName);
+
+                    // 만약 DB에 데이터가 없으면 studyTimeMinutes 사용
+                    if (subjectTotalTimeSeconds == 0)
+                    {
+                        subjectTotalTimeSeconds = studyTimeMinutes * 60;
+                        System.Diagnostics.Debug.WriteLine($"[LoadDailySubjects] 과목 '{subjectName}' DB 데이터 없음, DailySubject 시간 사용: {subjectTotalTimeSeconds}초");
+                    }
+
                     // 새 SubjectProgressViewModel 생성
                     var newSubject = new SubjectProgressViewModel
                     {
@@ -331,6 +341,8 @@ namespace SP.Modules.Daily.ViewModels
                             ParentSubjectName = subjectName,
                             Topics = new ObservableCollection<SP.Modules.Subjects.Models.TopicItem>()
                         };
+
+                        topicGroup.SetSubjectTotalTime(subjectTotalTimeSeconds);
 
                         // Topics 추가
                         foreach (var topicData in groupData.Topics)
