@@ -336,7 +336,7 @@ namespace SP.Modules.Daily.ViewModels
                         var topicGroup = new TopicGroupViewModel
                         {
                             GroupTitle = groupData.GroupTitle,
-                            TotalStudyTime = groupData.TotalStudyTime,
+                            TotalStudyTime = groupData.TotalStudyTimeSeconds,
                             IsCompleted = groupData.IsCompleted,
                             ParentSubjectName = subjectName,
                             Topics = new ObservableCollection<SP.Modules.Subjects.Models.TopicItem>()
@@ -351,7 +351,7 @@ namespace SP.Modules.Daily.ViewModels
                             {
                                 Name = topicData.Name,
                                 Progress = topicData.Progress,
-                                StudyTimeMinutes = topicData.StudyTimeMinutes,
+                                StudyTimeMinutes = topicData.StudyTimeSeconds,
                                 IsCompleted = topicData.IsCompleted,
                                 ParentTopicGroupName = groupData.GroupTitle,
                                 ParentSubjectName = subjectName
@@ -496,6 +496,42 @@ namespace SP.Modules.Daily.ViewModels
                 TimeSpan totalTime = TimeSpan.FromSeconds(totalSeconds);
                 return $"{(int)totalTime.TotalHours}시간 {totalTime.Minutes}분";
             }
+        }
+        // ===== 데이터 전송용 클래스들 (호환성 프로퍼티 추가) =====
+        public class TopicGroupData
+        {
+            public string GroupTitle { get; set; } = string.Empty;
+
+            // ✅ 메인 프로퍼티: 초단위
+            public int TotalStudyTimeSeconds { get; set; }
+
+            // ✅ 호환성 프로퍼티: 분단위 (기존 코드용)
+            public int TotalStudyTime
+            {
+                get => TotalStudyTimeSeconds;
+                set => TotalStudyTimeSeconds = value;
+            }
+
+            public bool IsCompleted { get; set; }
+            public List<TopicItemData> Topics { get; set; } = new();
+        }
+
+        public class TopicItemData
+        {
+            public string Name { get; set; } = string.Empty;
+            public double Progress { get; set; }
+
+            // ✅ 메인 프로퍼티: 초단위
+            public int StudyTimeSeconds { get; set; }
+
+            // ✅ 호환성 프로퍼티: 분단위 (기존 코드용)
+            public int StudyTimeMinutes
+            {
+                get => StudyTimeSeconds / 60;
+                set => StudyTimeSeconds = value * 60;
+            }
+
+            public bool IsCompleted { get; set; }
         }
     }
 }

@@ -8,9 +8,7 @@ namespace SP.Modules.Subjects.ViewModels
 {
     public class SubjectListPageViewModel : ViewModelBase
     {
-        // 싱글톤 DB 헬퍼 사용
         private readonly DatabaseHelper _db = DatabaseHelper.Instance;
-
         public ObservableCollection<SubjectGroupViewModel> Subjects { get; set; } = new();
 
         private bool _isAdding;
@@ -45,35 +43,31 @@ namespace SP.Modules.Subjects.ViewModels
             {
                 if (!string.IsNullOrWhiteSpace(NewSubjectText))
                 {
-                    // DB에 저장
                     int subjectId = _db.AddSubject(NewSubjectText);
 
-                    // ViewModel에 추가
                     Subjects.Add(new SubjectGroupViewModel
                     {
                         SubjectId = subjectId,
                         SubjectName = NewSubjectText,
                         TopicGroups = new ObservableCollection<TopicGroupViewModel>(),
-                        TotalStudyTime = 0
+                        TotalStudyTimeSeconds = 0 // ✅ 초단위로 설정
                     });
 
                     NewSubjectText = string.Empty;
                     IsAdding = false;
 
-                    // 전역 총 시간 업데이트
                     UpdateGlobalTotalTime();
                 }
             });
         }
 
-        // 실제 DB에서 과목 로드
         private void LoadSubjects()
         {
             Subjects.Clear();
 
-            // 전체 학습시간 계산 및 설정
-            int totalAllSubjectsTime = _db.GetTotalAllSubjectsStudyTime();
-            SubjectGroupViewModel.SetGlobalTotalTime(totalAllSubjectsTime);
+            // ✅ 전체 학습시간 계산 및 설정 (초단위)
+            int totalAllSubjectsTimeSeconds = _db.GetTotalAllSubjectsStudyTimeSeconds();
+            SubjectGroupViewModel.SetGlobalTotalTime(totalAllSubjectsTimeSeconds);
 
             var subjectList = _db.LoadSubjectsWithGroups();
             foreach (var subject in subjectList)
@@ -84,17 +78,16 @@ namespace SP.Modules.Subjects.ViewModels
 
         private void UpdateGlobalTotalTime()
         {
-            int totalAllSubjectsTime = _db.GetTotalAllSubjectsStudyTime();
-            SubjectGroupViewModel.SetGlobalTotalTime(totalAllSubjectsTime);
+            // ✅ 초단위로 계산
+            int totalAllSubjectsTimeSeconds = _db.GetTotalAllSubjectsStudyTimeSeconds();
+            SubjectGroupViewModel.SetGlobalTotalTime(totalAllSubjectsTimeSeconds);
 
-            // 모든 과목의 진행률 업데이트
             foreach (var subject in Subjects)
             {
                 subject.NotifyProgressChanged();
             }
         }
 
-        // 외부에서 데이터 새로고침할 때 사용
         public void RefreshData()
         {
             LoadSubjects();

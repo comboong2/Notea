@@ -41,7 +41,6 @@ namespace SP.Modules.Common.Helpers
 
         public SQLiteConnection GetConnection()
         {
-            // 🆕 DB 락 문제 해결을 위한 연결 설정 개선
             var connectionString = $"Data Source={_dbPath};Version=3;Pooling=true;Max Pool Size=100;Timeout=30;Journal Mode=WAL;";
             return new SQLiteConnection(connectionString);
         }
@@ -50,10 +49,8 @@ namespace SP.Modules.Common.Helpers
         {
             lock (_lockObject)
             {
-                // 🆕 DB 파일이 다른 프로세스에서 사용 중인지 확인
                 try
                 {
-                    // 기존 연결이 있으면 모두 해제
                     SQLiteConnection.ClearAllPools();
                     GC.Collect();
                     GC.WaitForPendingFinalizers();
@@ -73,58 +70,61 @@ namespace SP.Modules.Common.Helpers
                         using var conn = GetConnection();
                         conn.Open();
 
-                        // WAL 모드 설정 (락 문제 해결)
                         using var pragmaCmd = conn.CreateCommand();
                         pragmaCmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA cache_size=10000; PRAGMA temp_store=memory;";
                         pragmaCmd.ExecuteNonQuery();
 
                         var cmd = conn.CreateCommand();
+
+                        // Note 테이블
                         cmd.CommandText = @"
                             CREATE TABLE IF NOT EXISTS Note (
                                 NoteId INTEGER PRIMARY KEY AUTOINCREMENT,
                                 Content TEXT NOT NULL,
                                 CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                                 UpdatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                            );
-                        ";
+                            );";
                         cmd.ExecuteNonQuery();
 
+                        // Comment 테이블
                         cmd.CommandText = @"
                             CREATE TABLE IF NOT EXISTS Comment (
                                 Date TEXT PRIMARY KEY,
                                 Text TEXT NOT NULL
-                            );
-                        ";
+                            );";
                         cmd.ExecuteNonQuery();
 
+                        // Todo 테이블
                         cmd.CommandText = @"
                             CREATE TABLE IF NOT EXISTS Todo (
                                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
                                 Date TEXT NOT NULL,
                                 Title TEXT NOT NULL,
                                 IsCompleted INTEGER NOT NULL DEFAULT 0
-                            );
-                        ";
+                            );";
                         cmd.ExecuteNonQuery();
 
+                        // ✅ Subject 테이블 (초단위)
                         cmd.CommandText = @"
                             CREATE TABLE IF NOT EXISTS Subject (
                                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
                                 Name TEXT NOT NULL UNIQUE,
-                                TotalStudyTime INTEGER NOT NULL DEFAULT 0
+                                TotalStudyTimeSeconds INTEGER NOT NULL DEFAULT 0
                             );";
                         cmd.ExecuteNonQuery();
 
+                        // ✅ TopicGroup 테이블 (초단위)
                         cmd.CommandText = @"
                             CREATE TABLE IF NOT EXISTS TopicGroup (
                                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
                                 SubjectId INTEGER NOT NULL,
                                 Name TEXT NOT NULL,
-                                TotalStudyTime INTEGER NOT NULL DEFAULT 0,
+                                TotalStudyTimeSeconds INTEGER NOT NULL DEFAULT 0,
                                 FOREIGN KEY (SubjectId) REFERENCES Subject(Id) ON DELETE CASCADE
                             );";
                         cmd.ExecuteNonQuery();
 
+                        // TopicItem 테이블
                         cmd.CommandText = @"
                             CREATE TABLE IF NOT EXISTS TopicItem (
                                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -135,6 +135,7 @@ namespace SP.Modules.Common.Helpers
                             );";
                         cmd.ExecuteNonQuery();
 
+                        // StudySession 테이블
                         cmd.CommandText = @"
                             CREATE TABLE IF NOT EXISTS StudySession (
                                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -146,30 +147,31 @@ namespace SP.Modules.Common.Helpers
                             );";
                         cmd.ExecuteNonQuery();
 
+                        // ✅ DailySubject 테이블 (초단위)
                         cmd.CommandText = @"
                             CREATE TABLE IF NOT EXISTS DailySubject (
                                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
                                 Date TEXT NOT NULL,
                                 SubjectName TEXT NOT NULL,
                                 Progress REAL NOT NULL DEFAULT 0.0,
-                                StudyTimeMinutes INTEGER NOT NULL DEFAULT 0,
+                                StudyTimeSeconds INTEGER NOT NULL DEFAULT 0,
                                 DisplayOrder INTEGER NOT NULL DEFAULT 0
                             );";
                         cmd.ExecuteNonQuery();
 
-                        // 🆕 DailyTopicGroup 테이블 추가
+                        // ✅ DailyTopicGroup 테이블 (초단위)
                         cmd.CommandText = @"
                             CREATE TABLE IF NOT EXISTS DailyTopicGroup (
                                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
                                 Date TEXT NOT NULL,
                                 SubjectName TEXT NOT NULL,
                                 GroupTitle TEXT NOT NULL,
-                                TotalStudyTime INTEGER NOT NULL DEFAULT 0,
+                                TotalStudyTimeSeconds INTEGER NOT NULL DEFAULT 0,
                                 IsCompleted INTEGER NOT NULL DEFAULT 0
                             );";
                         cmd.ExecuteNonQuery();
 
-                        // 🆕 DailyTopicItem 테이블 추가
+                        // ✅ DailyTopicItem 테이블 (초단위)
                         cmd.CommandText = @"
                             CREATE TABLE IF NOT EXISTS DailyTopicItem (
                                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -178,15 +180,15 @@ namespace SP.Modules.Common.Helpers
                                 GroupTitle TEXT NOT NULL,
                                 TopicName TEXT NOT NULL,
                                 Progress REAL NOT NULL DEFAULT 0.0,
-                                StudyTimeMinutes INTEGER NOT NULL DEFAULT 0,
+                                StudyTimeSeconds INTEGER NOT NULL DEFAULT 0,
                                 IsCompleted INTEGER NOT NULL DEFAULT 0
                             );";
                         cmd.ExecuteNonQuery();
 
                         System.Diagnostics.Debug.WriteLine("[DB] 데이터베이스 초기화 완료");
-                        break; // 성공하면 루프 종료
+                        break;
                     }
-                    catch (SQLiteException ex) when (ex.ErrorCode == 5) // SQLITE_BUSY
+                    catch (SQLiteException ex) when (ex.ErrorCode == 5)
                     {
                         retryCount++;
                         System.Diagnostics.Debug.WriteLine($"[DB] 데이터베이스 락, 재시도 {retryCount}/{maxRetries}: {ex.Message}");
@@ -197,7 +199,7 @@ namespace SP.Modules.Common.Helpers
                             throw new Exception("데이터베이스에 접근할 수 없습니다. 다른 프로그램에서 사용 중일 수 있습니다.");
                         }
 
-                        System.Threading.Thread.Sleep(1000 * retryCount); // 점진적 지연
+                        System.Threading.Thread.Sleep(1000 * retryCount);
                     }
                     catch (Exception ex)
                     {
@@ -208,7 +210,6 @@ namespace SP.Modules.Common.Helpers
             }
         }
 
-        // 🆕 안전한 DB 작업을 위한 헬퍼 메소드
         private T ExecuteWithRetry<T>(Func<T> operation, int maxRetries = 3)
         {
             int retryCount = 0;
@@ -218,7 +219,7 @@ namespace SP.Modules.Common.Helpers
                 {
                     return operation();
                 }
-                catch (SQLiteException ex) when (ex.ErrorCode == 5) // SQLITE_BUSY
+                catch (SQLiteException ex) when (ex.ErrorCode == 5)
                 {
                     retryCount++;
                     if (retryCount >= maxRetries)
@@ -236,7 +237,7 @@ namespace SP.Modules.Common.Helpers
             ExecuteWithRetry(() => { operation(); return true; }, maxRetries);
         }
 
-        // Note 관련 메소드들 - 안전한 실행으로 래핑
+        // ===== Note 관련 메소드들 =====
         public List<Note> GetAllNotes()
         {
             return ExecuteWithRetry(() =>
@@ -326,7 +327,7 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        // Comment 관련 메소드들
+        // ===== Comment 관련 메소드들 =====
         public string GetCommentByDate(DateTime date)
         {
             return ExecuteWithRetry(() =>
@@ -357,8 +358,7 @@ namespace SP.Modules.Common.Helpers
                         INSERT INTO Comment (Date, Text)
                         VALUES (@date, @text)
                         ON CONFLICT(Date)
-                        DO UPDATE SET Text = @text
-                    ";
+                        DO UPDATE SET Text = @text";
                     cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
                     cmd.Parameters.AddWithValue("@text", text);
                     cmd.ExecuteNonQuery();
@@ -366,7 +366,7 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        // Todo 관련 메소드들
+        // ===== Todo 관련 메소드들 =====
         public List<TodoItem> GetTodosByDate(DateTime date)
         {
             return ExecuteWithRetry(() =>
@@ -445,7 +445,7 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        // Subject 관련 메소드들
+        // ===== Subject 관련 메소드들 (초단위) =====
         public int AddSubject(string name)
         {
             return ExecuteWithRetry(() =>
@@ -496,7 +496,7 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        public void UpdateSubjectStudyTime(int subjectId, int seconds)
+        public void UpdateSubjectStudyTimeSeconds(int subjectId, int seconds)
         {
             ExecuteWithRetry(() =>
             {
@@ -505,7 +505,7 @@ namespace SP.Modules.Common.Helpers
                     using var conn = GetConnection();
                     conn.Open();
                     using var cmd = conn.CreateCommand();
-                    cmd.CommandText = "UPDATE Subject SET TotalStudyTime = TotalStudyTime + @sec WHERE Id = @id";
+                    cmd.CommandText = "UPDATE Subject SET TotalStudyTimeSeconds = TotalStudyTimeSeconds + @sec WHERE Id = @id";
                     cmd.Parameters.AddWithValue("@sec", seconds);
                     cmd.Parameters.AddWithValue("@id", subjectId);
                     cmd.ExecuteNonQuery();
@@ -513,7 +513,7 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        public void UpdateTopicGroupStudyTime(int groupId, int seconds)
+        public void UpdateTopicGroupStudyTimeSeconds(int groupId, int seconds)
         {
             ExecuteWithRetry(() =>
             {
@@ -522,7 +522,7 @@ namespace SP.Modules.Common.Helpers
                     using var conn = GetConnection();
                     conn.Open();
                     using var cmd = conn.CreateCommand();
-                    cmd.CommandText = "UPDATE TopicGroup SET TotalStudyTime = TotalStudyTime + @sec WHERE Id = @id";
+                    cmd.CommandText = "UPDATE TopicGroup SET TotalStudyTimeSeconds = TotalStudyTimeSeconds + @sec WHERE Id = @id";
                     cmd.Parameters.AddWithValue("@sec", seconds);
                     cmd.Parameters.AddWithValue("@id", groupId);
                     cmd.ExecuteNonQuery();
@@ -530,6 +530,7 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
+        // ✅ 수정: LoadSubjectsWithGroups 메소드 (초단위 컬럼 사용)
         public List<SubjectGroupViewModel> LoadSubjectsWithGroups()
         {
             return ExecuteWithRetry(() =>
@@ -542,27 +543,26 @@ namespace SP.Modules.Common.Helpers
                     conn.Open();
 
                     var cmd = conn.CreateCommand();
-                    cmd.CommandText = "SELECT Id, Name, TotalStudyTime FROM Subject ORDER BY Name";
+                    cmd.CommandText = "SELECT Id, Name, TotalStudyTimeSeconds FROM Subject ORDER BY Name";
                     using var reader = cmd.ExecuteReader();
 
                     while (reader.Read())
                     {
                         var subjectId = Convert.ToInt32(reader["Id"]);
                         var subjectName = reader["Name"].ToString();
-                        var totalStudyTime = Convert.ToInt32(reader["TotalStudyTime"]);
+                        var totalStudyTimeSeconds = Convert.ToInt32(reader["TotalStudyTimeSeconds"]);
 
                         var subjectVM = new SubjectGroupViewModel
                         {
                             SubjectId = subjectId,
                             SubjectName = subjectName,
-                            TotalStudyTime = totalStudyTime,
+                            TotalStudyTimeSeconds = totalStudyTimeSeconds, // ✅ 초단위 사용
                             TopicGroups = new ObservableCollection<TopicGroupViewModel>()
                         };
 
                         result.Add(subjectVM);
                     }
 
-                    // 각 과목에 대해 토픽 그룹 로드
                     foreach (var subject in result)
                     {
                         LoadTopicGroupsForSubject(conn, subject);
@@ -573,10 +573,11 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
+        // ✅ 수정: LoadTopicGroupsForSubject 메소드 (초단위 컬럼 사용)
         private void LoadTopicGroupsForSubject(SQLiteConnection conn, SubjectGroupViewModel subject)
         {
             using var groupCmd = conn.CreateCommand();
-            groupCmd.CommandText = "SELECT Id, Name, TotalStudyTime FROM TopicGroup WHERE SubjectId = @id ORDER BY Name";
+            groupCmd.CommandText = "SELECT Id, Name, TotalStudyTimeSeconds FROM TopicGroup WHERE SubjectId = @id ORDER BY Name";
             groupCmd.Parameters.AddWithValue("@id", subject.SubjectId);
 
             using var groupReader = groupCmd.ExecuteReader();
@@ -584,29 +585,25 @@ namespace SP.Modules.Common.Helpers
             {
                 var groupId = Convert.ToInt32(groupReader["Id"]);
                 var groupName = groupReader["Name"].ToString();
-                var groupStudyTime = Convert.ToInt32(groupReader["TotalStudyTime"]);
+                var groupStudyTimeSeconds = Convert.ToInt32(groupReader["TotalStudyTimeSeconds"]);
 
                 var topicGroup = new TopicGroupViewModel
                 {
                     GroupTitle = groupName,
-                    TotalStudyTime = groupStudyTime,
+                    TotalStudyTimeSeconds = groupStudyTimeSeconds, // ✅ 초단위 사용
                     ParentSubjectName = subject.SubjectName,
                     Topics = new ObservableCollection<SP.Modules.Subjects.Models.TopicItem>()
                 };
 
-                // 과목의 총 학습시간 설정 (비율 계산용)
-                topicGroup.SetSubjectTotalTime(subject.TotalStudyTime);
+                topicGroup.SetSubjectTotalTime(subject.TotalStudyTimeSeconds); // ✅ 초단위 전달
 
-                // 이 TopicGroup에 속한 TopicItem들 로드
                 LoadTopicItemsForGroup(conn, topicGroup, groupId);
-
                 subject.TopicGroups.Add(topicGroup);
 
                 System.Diagnostics.Debug.WriteLine($"[DB] TopicGroup '{groupName}' 로드됨, Topics 개수: {topicGroup.Topics.Count}");
             }
         }
 
-        // 새로운 메소드 추가: TopicItem들을 로드
         private void LoadTopicItemsForGroup(SQLiteConnection conn, TopicGroupViewModel topicGroup, int groupId)
         {
             using var itemCmd = conn.CreateCommand();
@@ -626,8 +623,8 @@ namespace SP.Modules.Common.Helpers
                     Content = content,
                     ParentTopicGroupName = topicGroup.GroupTitle,
                     ParentSubjectName = topicGroup.ParentSubjectName,
-                    Progress = 0.0, // 기본값, 나중에 실제 진행률로 업데이트
-                    StudyTimeMinutes = 0 // 기본값
+                    Progress = 0.0,
+                    StudyTimeSeconds = 0 // ✅ 초단위 사용
                 };
 
                 topicGroup.Topics.Add(topicItem);
@@ -636,7 +633,7 @@ namespace SP.Modules.Common.Helpers
             System.Diagnostics.Debug.WriteLine($"[DB] TopicGroup '{topicGroup.GroupTitle}'에 {topicGroup.Topics.Count}개 TopicItem 로드됨");
         }
 
-        // 학습 시간 관련 메소드들 (초 단위 기준)
+        // ===== 학습 시간 관련 메소드들 (초단위) =====
         public void SaveStudySession(DateTime startTime, DateTime endTime, int durationSeconds)
         {
             ExecuteWithRetry(() =>
@@ -670,7 +667,7 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        // 특정 날짜의 총 학습 시간 가져오기 (초 단위)
+        // ✅ 수정: GetTotalStudyTimeSeconds(DateTime date) 오버로드 추가
         public int GetTotalStudyTimeSeconds(DateTime date)
         {
             return ExecuteWithRetry(() =>
@@ -700,7 +697,6 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        // 전체 학습 시간 가져오기 (초 단위)
         public int GetTotalStudyTimeSeconds()
         {
             return ExecuteWithRetry(() =>
@@ -718,21 +714,7 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        // 호환성을 위한 분 단위 메소드들
-        public int GetTotalStudyTimeMinutes(DateTime date)
-        {
-            var totalSeconds = GetTotalStudyTimeSeconds(date);
-            return totalSeconds / 60;
-        }
-
-        public int GetTotalStudyTimeMinutes()
-        {
-            var totalSeconds = GetTotalStudyTimeSeconds();
-            return totalSeconds / 60;
-        }
-
-        // 과목 학습시간 관련 메소드들
-        public int GetTotalAllSubjectsStudyTime()
+        public int GetTotalAllSubjectsStudyTimeSeconds()
         {
             return ExecuteWithRetry(() =>
             {
@@ -741,51 +723,36 @@ namespace SP.Modules.Common.Helpers
                     using var conn = GetConnection();
                     conn.Open();
                     using var cmd = conn.CreateCommand();
-                    cmd.CommandText = "SELECT COALESCE(SUM(TotalStudyTime), 0) FROM Subject";
+                    cmd.CommandText = "SELECT COALESCE(SUM(TotalStudyTimeSeconds), 0) FROM Subject";
                     var result = cmd.ExecuteScalar();
                     return Convert.ToInt32(result);
                 }
             });
         }
 
-        public List<SubjectGroupViewModel> LoadSubjectsWithStudyTime()
+        public int GetSubjectTotalStudyTimeSeconds(string subjectName)
         {
             return ExecuteWithRetry(() =>
             {
                 lock (_lockObject)
                 {
-                    var result = new List<SubjectGroupViewModel>();
-
                     using var conn = GetConnection();
                     conn.Open();
                     using var cmd = conn.CreateCommand();
-                    cmd.CommandText = "SELECT Id, Name, TotalStudyTime FROM Subject ORDER BY TotalStudyTime DESC";
-                    using var reader = cmd.ExecuteReader();
+                    cmd.CommandText = "SELECT COALESCE(TotalStudyTimeSeconds, 0) FROM Subject WHERE Name = @name";
+                    cmd.Parameters.AddWithValue("@name", subjectName);
 
-                    while (reader.Read())
-                    {
-                        var subjectId = Convert.ToInt32(reader["Id"]);
-                        var subjectName = reader["Name"].ToString();
-                        var totalStudyTime = Convert.ToInt32(reader["TotalStudyTime"]);
+                    var result = cmd.ExecuteScalar();
+                    int totalTimeSeconds = Convert.ToInt32(result);
 
-                        var subjectVM = new SubjectGroupViewModel
-                        {
-                            SubjectId = subjectId,
-                            SubjectName = subjectName,
-                            TotalStudyTime = totalStudyTime,
-                            TopicGroups = new ObservableCollection<TopicGroupViewModel>()
-                        };
-
-                        result.Add(subjectVM);
-                    }
-
-                    return result;
+                    System.Diagnostics.Debug.WriteLine($"[DB] 과목 '{subjectName}' 총 학습시간: {totalTimeSeconds}초");
+                    return totalTimeSeconds;
                 }
             });
         }
 
-        // 오늘 할 일 과목 관련 메소드들
-        public void SaveDailySubject(DateTime date, string subjectName, double progress, int studyTimeMinutes, int displayOrder)
+        // ===== Daily Subject 관련 메소드들 (초단위) =====
+        public void SaveDailySubject(DateTime date, string subjectName, double progress, int studyTimeSeconds, int displayOrder)
         {
             ExecuteWithRetry(() =>
             {
@@ -797,17 +764,17 @@ namespace SP.Modules.Common.Helpers
                         conn.Open();
                         using var cmd = conn.CreateCommand();
                         cmd.CommandText = @"
-                            INSERT OR REPLACE INTO DailySubject (Date, SubjectName, Progress, StudyTimeMinutes, DisplayOrder)
+                            INSERT OR REPLACE INTO DailySubject (Date, SubjectName, Progress, StudyTimeSeconds, DisplayOrder)
                             VALUES (@date, @subjectName, @progress, @studyTime, @order)";
 
                         cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
                         cmd.Parameters.AddWithValue("@subjectName", subjectName);
                         cmd.Parameters.AddWithValue("@progress", progress);
-                        cmd.Parameters.AddWithValue("@studyTime", studyTimeMinutes);
+                        cmd.Parameters.AddWithValue("@studyTime", studyTimeSeconds);
                         cmd.Parameters.AddWithValue("@order", displayOrder);
 
                         cmd.ExecuteNonQuery();
-                        System.Diagnostics.Debug.WriteLine($"[DB] 오늘 할 일 과목 저장: {subjectName}");
+                        System.Diagnostics.Debug.WriteLine($"[DB] 오늘 할 일 과목 저장: {subjectName} ({studyTimeSeconds}초)");
                     }
                     catch (Exception ex)
                     {
@@ -817,8 +784,7 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        // 🆕 TopicGroups와 함께 DailySubject 저장하는 새로운 메소드
-        public void SaveDailySubjectWithTopicGroups(DateTime date, string subjectName, double progress, int studyTimeMinutes, int displayOrder, ObservableCollection<TopicGroupViewModel> topicGroups)
+        public void SaveDailySubjectWithTopicGroups(DateTime date, string subjectName, double progress, int studyTimeSeconds, int displayOrder, ObservableCollection<TopicGroupViewModel> topicGroups)
         {
             ExecuteWithRetry(() =>
             {
@@ -832,21 +798,21 @@ namespace SP.Modules.Common.Helpers
 
                         try
                         {
-                            // 기존 DailySubject 저장
+                            // DailySubject 저장
                             using var cmd = conn.CreateCommand();
                             cmd.Transaction = transaction;
                             cmd.CommandText = @"
-                                INSERT OR REPLACE INTO DailySubject (Date, SubjectName, Progress, StudyTimeMinutes, DisplayOrder)
+                                INSERT OR REPLACE INTO DailySubject (Date, SubjectName, Progress, StudyTimeSeconds, DisplayOrder)
                                 VALUES (@date, @subjectName, @progress, @studyTime, @order)";
 
                             cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
                             cmd.Parameters.AddWithValue("@subjectName", subjectName);
                             cmd.Parameters.AddWithValue("@progress", progress);
-                            cmd.Parameters.AddWithValue("@studyTime", studyTimeMinutes);
+                            cmd.Parameters.AddWithValue("@studyTime", studyTimeSeconds);
                             cmd.Parameters.AddWithValue("@order", displayOrder);
                             cmd.ExecuteNonQuery();
 
-                            // 해당 과목의 기존 DailyTopicGroup 삭제
+                            // 기존 TopicGroup 삭제
                             using var deleteGroupCmd = conn.CreateCommand();
                             deleteGroupCmd.Transaction = transaction;
                             deleteGroupCmd.CommandText = "DELETE FROM DailyTopicGroup WHERE Date = @date AND SubjectName = @subjectName";
@@ -854,7 +820,7 @@ namespace SP.Modules.Common.Helpers
                             deleteGroupCmd.Parameters.AddWithValue("@subjectName", subjectName);
                             deleteGroupCmd.ExecuteNonQuery();
 
-                            // 해당 과목의 기존 DailyTopicItem 삭제
+                            // 기존 TopicItem 삭제
                             using var deleteItemCmd = conn.CreateCommand();
                             deleteItemCmd.Transaction = transaction;
                             deleteItemCmd.CommandText = "DELETE FROM DailyTopicItem WHERE Date = @date AND SubjectName = @subjectName";
@@ -868,23 +834,23 @@ namespace SP.Modules.Common.Helpers
                                 using var groupCmd = conn.CreateCommand();
                                 groupCmd.Transaction = transaction;
                                 groupCmd.CommandText = @"
-                                    INSERT INTO DailyTopicGroup (Date, SubjectName, GroupTitle, TotalStudyTime, IsCompleted)
+                                    INSERT INTO DailyTopicGroup (Date, SubjectName, GroupTitle, TotalStudyTimeSeconds, IsCompleted)
                                     VALUES (@date, @subjectName, @groupTitle, @totalStudyTime, @isCompleted)";
 
                                 groupCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
                                 groupCmd.Parameters.AddWithValue("@subjectName", subjectName);
                                 groupCmd.Parameters.AddWithValue("@groupTitle", topicGroup.GroupTitle);
-                                groupCmd.Parameters.AddWithValue("@totalStudyTime", topicGroup.TotalStudyTime);
+                                groupCmd.Parameters.AddWithValue("@totalStudyTime", topicGroup.TotalStudyTimeSeconds);
                                 groupCmd.Parameters.AddWithValue("@isCompleted", topicGroup.IsCompleted ? 1 : 0);
                                 groupCmd.ExecuteNonQuery();
 
-                                // 각 TopicGroup의 Topics도 저장
+                                // TopicItems 저장
                                 foreach (var topic in topicGroup.Topics)
                                 {
                                     using var topicCmd = conn.CreateCommand();
                                     topicCmd.Transaction = transaction;
                                     topicCmd.CommandText = @"
-                                        INSERT INTO DailyTopicItem (Date, SubjectName, GroupTitle, TopicName, Progress, StudyTimeMinutes, IsCompleted)
+                                        INSERT INTO DailyTopicItem (Date, SubjectName, GroupTitle, TopicName, Progress, StudyTimeSeconds, IsCompleted)
                                         VALUES (@date, @subjectName, @groupTitle, @topicName, @progress, @studyTime, @isCompleted)";
 
                                     topicCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
@@ -892,14 +858,14 @@ namespace SP.Modules.Common.Helpers
                                     topicCmd.Parameters.AddWithValue("@groupTitle", topicGroup.GroupTitle);
                                     topicCmd.Parameters.AddWithValue("@topicName", topic.Name);
                                     topicCmd.Parameters.AddWithValue("@progress", topic.Progress);
-                                    topicCmd.Parameters.AddWithValue("@studyTime", topic.StudyTimeMinutes);
+                                    topicCmd.Parameters.AddWithValue("@studyTime", topic.StudyTimeSeconds);
                                     topicCmd.Parameters.AddWithValue("@isCompleted", topic.IsCompleted ? 1 : 0);
                                     topicCmd.ExecuteNonQuery();
                                 }
                             }
 
                             transaction.Commit();
-                            System.Diagnostics.Debug.WriteLine($"[DB] DailySubject와 TopicGroups 저장 완료: {subjectName} ({topicGroups.Count}개 그룹)");
+                            System.Diagnostics.Debug.WriteLine($"[DB] DailySubject와 TopicGroups 저장 완료: {subjectName} ({topicGroups.Count}개 그룹, {studyTimeSeconds}초)");
                         }
                         catch
                         {
@@ -915,7 +881,7 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        public List<(string SubjectName, double Progress, int StudyTimeMinutes)> GetDailySubjects(DateTime date)
+        public List<(string SubjectName, double Progress, int StudyTimeSeconds)> GetDailySubjects(DateTime date)
         {
             return ExecuteWithRetry(() =>
             {
@@ -927,7 +893,7 @@ namespace SP.Modules.Common.Helpers
                         using var conn = GetConnection();
                         conn.Open();
                         using var cmd = conn.CreateCommand();
-                        cmd.CommandText = "SELECT SubjectName, Progress, StudyTimeMinutes FROM DailySubject WHERE Date = @date ORDER BY DisplayOrder";
+                        cmd.CommandText = "SELECT SubjectName, Progress, StudyTimeSeconds FROM DailySubject WHERE Date = @date ORDER BY DisplayOrder";
                         cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
 
                         using var reader = cmd.ExecuteReader();
@@ -936,7 +902,7 @@ namespace SP.Modules.Common.Helpers
                             result.Add((
                                 reader["SubjectName"].ToString(),
                                 Convert.ToDouble(reader["Progress"]),
-                                Convert.ToInt32(reader["StudyTimeMinutes"])
+                                Convert.ToInt32(reader["StudyTimeSeconds"])
                             ));
                         }
 
@@ -951,8 +917,7 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        // 🆕 TopicGroups와 함께 DailySubject를 로드하는 새로운 메소드
-        public List<(string SubjectName, double Progress, int StudyTimeMinutes, List<TopicGroupData> TopicGroups)> GetDailySubjectsWithTopicGroups(DateTime date)
+        public List<(string SubjectName, double Progress, int StudyTimeSeconds, List<TopicGroupData> TopicGroups)> GetDailySubjectsWithTopicGroups(DateTime date)
         {
             return ExecuteWithRetry(() =>
             {
@@ -966,7 +931,7 @@ namespace SP.Modules.Common.Helpers
 
                         // 과목 정보 조회
                         using var subjectCmd = conn.CreateCommand();
-                        subjectCmd.CommandText = "SELECT SubjectName, Progress, StudyTimeMinutes FROM DailySubject WHERE Date = @date ORDER BY DisplayOrder";
+                        subjectCmd.CommandText = "SELECT SubjectName, Progress, StudyTimeSeconds FROM DailySubject WHERE Date = @date ORDER BY DisplayOrder";
                         subjectCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
 
                         var subjects = new List<(string, double, int)>();
@@ -977,19 +942,19 @@ namespace SP.Modules.Common.Helpers
                                 subjects.Add((
                                     subjectReader["SubjectName"].ToString(),
                                     Convert.ToDouble(subjectReader["Progress"]),
-                                    Convert.ToInt32(subjectReader["StudyTimeMinutes"])
+                                    Convert.ToInt32(subjectReader["StudyTimeSeconds"])
                                 ));
                             }
                         }
 
                         // 각 과목에 대해 TopicGroups 조회
-                        foreach (var (subjectName, progress, studyTimeMinutes) in subjects)
+                        foreach (var (subjectName, progress, studyTimeSeconds) in subjects)
                         {
                             var topicGroups = new List<TopicGroupData>();
 
-                            // 해당 과목의 TopicGroups 조회
+                            // TopicGroups 조회
                             using var groupCmd = conn.CreateCommand();
-                            groupCmd.CommandText = "SELECT GroupTitle, TotalStudyTime, IsCompleted FROM DailyTopicGroup WHERE Date = @date AND SubjectName = @subjectName";
+                            groupCmd.CommandText = "SELECT GroupTitle, TotalStudyTimeSeconds, IsCompleted FROM DailyTopicGroup WHERE Date = @date AND SubjectName = @subjectName";
                             groupCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
                             groupCmd.Parameters.AddWithValue("@subjectName", subjectName);
 
@@ -1000,20 +965,19 @@ namespace SP.Modules.Common.Helpers
                                 {
                                     groups.Add((
                                         groupReader["GroupTitle"].ToString(),
-                                        Convert.ToInt32(groupReader["TotalStudyTime"]),
+                                        Convert.ToInt32(groupReader["TotalStudyTimeSeconds"]),
                                         Convert.ToInt32(groupReader["IsCompleted"]) == 1
                                     ));
                                 }
                             }
 
-                            // 각 TopicGroup에 대해 Topics 조회
-                            foreach (var (groupTitle, totalStudyTime, isCompleted) in groups)
+                            // 각 TopicGroup의 Topics 조회
+                            foreach (var (groupTitle, totalStudyTimeSeconds, isCompleted) in groups)
                             {
                                 var topics = new List<TopicItemData>();
 
-                                // 해당 TopicGroup의 Topics 조회
                                 using var topicCmd = conn.CreateCommand();
-                                topicCmd.CommandText = "SELECT TopicName, Progress, StudyTimeMinutes, IsCompleted FROM DailyTopicItem WHERE Date = @date AND SubjectName = @subjectName AND GroupTitle = @groupTitle";
+                                topicCmd.CommandText = "SELECT TopicName, Progress, StudyTimeSeconds, IsCompleted FROM DailyTopicItem WHERE Date = @date AND SubjectName = @subjectName AND GroupTitle = @groupTitle";
                                 topicCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
                                 topicCmd.Parameters.AddWithValue("@subjectName", subjectName);
                                 topicCmd.Parameters.AddWithValue("@groupTitle", groupTitle);
@@ -1025,7 +989,7 @@ namespace SP.Modules.Common.Helpers
                                     {
                                         Name = topicReader["TopicName"].ToString(),
                                         Progress = Convert.ToDouble(topicReader["Progress"]),
-                                        StudyTimeMinutes = Convert.ToInt32(topicReader["StudyTimeMinutes"]),
+                                        StudyTimeSeconds = Convert.ToInt32(topicReader["StudyTimeSeconds"]),
                                         IsCompleted = Convert.ToInt32(topicReader["IsCompleted"]) == 1
                                     });
                                 }
@@ -1033,13 +997,13 @@ namespace SP.Modules.Common.Helpers
                                 topicGroups.Add(new TopicGroupData
                                 {
                                     GroupTitle = groupTitle,
-                                    TotalStudyTime = totalStudyTime,
+                                    TotalStudyTimeSeconds = totalStudyTimeSeconds,
                                     IsCompleted = isCompleted,
                                     Topics = topics
                                 });
                             }
 
-                            result.Add((subjectName, progress, studyTimeMinutes, topicGroups));
+                            result.Add((subjectName, progress, studyTimeSeconds, topicGroups));
                         }
 
                         System.Diagnostics.Debug.WriteLine($"[DB] {result.Count}개 DailySubject (TopicGroups 포함) 로드됨");
@@ -1108,7 +1072,6 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        // 특정 날짜의 모든 DailySubject 삭제
         public void RemoveAllDailySubjects(DateTime date)
         {
             ExecuteWithRetry(() =>
@@ -1161,7 +1124,7 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        // 🆕 체크박스 상태 업데이트 메소드 추가
+        // ===== 체크박스 상태 업데이트 메소드들 =====
         public void UpdateDailyTopicGroupCompletion(DateTime date, string subjectName, string groupTitle, bool isCompleted)
         {
             ExecuteWithRetry(() =>
@@ -1246,14 +1209,14 @@ namespace SP.Modules.Common.Helpers
                             using var cleanupCmd = conn.CreateCommand();
                             cleanupCmd.Transaction = transaction;
                             cleanupCmd.CommandText = @"
-                        DELETE FROM DailySubject 
-                        WHERE Date = @date 
-                        AND Id NOT IN (
-                            SELECT MAX(Id) 
-                            FROM DailySubject 
-                            WHERE Date = @date 
-                            GROUP BY SubjectName
-                        )";
+                                DELETE FROM DailySubject 
+                                WHERE Date = @date 
+                                AND Id NOT IN (
+                                    SELECT MAX(Id) 
+                                    FROM DailySubject 
+                                    WHERE Date = @date 
+                                    GROUP BY SubjectName
+                                )";
                             cleanupCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
                             var deletedCount = cleanupCmd.ExecuteNonQuery();
 
@@ -1261,14 +1224,14 @@ namespace SP.Modules.Common.Helpers
                             using var cleanupGroupCmd = conn.CreateCommand();
                             cleanupGroupCmd.Transaction = transaction;
                             cleanupGroupCmd.CommandText = @"
-                        DELETE FROM DailyTopicGroup 
-                        WHERE Date = @date 
-                        AND Id NOT IN (
-                            SELECT MAX(Id) 
-                            FROM DailyTopicGroup 
-                            WHERE Date = @date 
-                            GROUP BY SubjectName, GroupTitle
-                        )";
+                                DELETE FROM DailyTopicGroup 
+                                WHERE Date = @date 
+                                AND Id NOT IN (
+                                    SELECT MAX(Id) 
+                                    FROM DailyTopicGroup 
+                                    WHERE Date = @date 
+                                    GROUP BY SubjectName, GroupTitle
+                                )";
                             cleanupGroupCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
                             var deletedGroupCount = cleanupGroupCmd.ExecuteNonQuery();
 
@@ -1276,14 +1239,14 @@ namespace SP.Modules.Common.Helpers
                             using var cleanupItemCmd = conn.CreateCommand();
                             cleanupItemCmd.Transaction = transaction;
                             cleanupItemCmd.CommandText = @"
-                        DELETE FROM DailyTopicItem 
-                        WHERE Date = @date 
-                        AND Id NOT IN (
-                            SELECT MAX(Id) 
-                            FROM DailyTopicItem 
-                            WHERE Date = @date 
-                            GROUP BY SubjectName, GroupTitle, TopicName
-                        )";
+                                DELETE FROM DailyTopicItem 
+                                WHERE Date = @date 
+                                AND Id NOT IN (
+                                    SELECT MAX(Id) 
+                                    FROM DailyTopicItem 
+                                    WHERE Date = @date 
+                                    GROUP BY SubjectName, GroupTitle, TopicName
+                                )";
                             cleanupItemCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
                             var deletedItemCount = cleanupItemCmd.ExecuteNonQuery();
 
@@ -1304,7 +1267,71 @@ namespace SP.Modules.Common.Helpers
                 }
             });
         }
+
+        // ===== 호환성 메소드들 =====
+
+        // ✅ 제거: 중복된 GetTotalStudyTimeMinutes 메소드들 제거하고 단일 버전만 유지
+        public int GetTotalStudyTimeMinutes(DateTime date)
+        {
+            return GetTotalStudyTimeSeconds(date) / 60;
+        }
+
+        public int GetTotalStudyTimeMinutes()
+        {
+            return GetTotalStudyTimeSeconds() / 60;
+        }
+
+        // ✅ 기존 호환성 메소드들 (Obsolete 표시)
+        [Obsolete("Use GetTotalAllSubjectsStudyTimeSeconds instead")]
+        public int GetTotalAllSubjectsStudyTime()
+        {
+            return GetTotalAllSubjectsStudyTimeSeconds();
+        }
+
+        [Obsolete("Use GetSubjectTotalStudyTimeSeconds instead")]
         public int GetSubjectTotalStudyTime(string subjectName)
+        {
+            return GetSubjectTotalStudyTimeSeconds(subjectName);
+        }
+
+        public List<SubjectGroupViewModel> LoadSubjectsWithStudyTime()
+        {
+            return ExecuteWithRetry(() =>
+            {
+                lock (_lockObject)
+                {
+                    var result = new List<SubjectGroupViewModel>();
+
+                    using var conn = GetConnection();
+                    conn.Open();
+                    using var cmd = conn.CreateCommand();
+                    cmd.CommandText = "SELECT Id, Name, TotalStudyTimeSeconds FROM Subject ORDER BY TotalStudyTimeSeconds DESC";
+                    using var reader = cmd.ExecuteReader();
+
+                    while (reader.Read())
+                    {
+                        var subjectId = Convert.ToInt32(reader["Id"]);
+                        var subjectName = reader["Name"].ToString();
+                        var totalStudyTimeSeconds = Convert.ToInt32(reader["TotalStudyTimeSeconds"]);
+
+                        var subjectVM = new SubjectGroupViewModel
+                        {
+                            SubjectId = subjectId,
+                            SubjectName = subjectName,
+                            TotalStudyTimeSeconds = totalStudyTimeSeconds,
+                            TopicGroups = new ObservableCollection<TopicGroupViewModel>()
+                        };
+
+                        result.Add(subjectVM);
+                    }
+
+                    return result;
+                }
+            });
+        }
+
+        // ✅ 수정: GetDailySubjectStudyTimeSeconds 메소드 (올바른 컬럼명 사용)
+        public int GetDailySubjectStudyTimeSeconds(DateTime date, string subjectName)
         {
             return ExecuteWithRetry(() =>
             {
@@ -1313,14 +1340,41 @@ namespace SP.Modules.Common.Helpers
                     using var conn = GetConnection();
                     conn.Open();
                     using var cmd = conn.CreateCommand();
-                    cmd.CommandText = "SELECT COALESCE(TotalStudyTime, 0) FROM Subject WHERE Name = @name";
-                    cmd.Parameters.AddWithValue("@name", subjectName);
+
+                    cmd.CommandText = "SELECT COALESCE(StudyTimeSeconds, 0) FROM DailySubject WHERE Date = @date AND SubjectName = @subjectName";
+                    cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
+                    cmd.Parameters.AddWithValue("@subjectName", subjectName);
 
                     var result = cmd.ExecuteScalar();
-                    int totalTime = Convert.ToInt32(result);
+                    int studyTimeSeconds = Convert.ToInt32(result);
 
-                    System.Diagnostics.Debug.WriteLine($"[DB] 과목 '{subjectName}' 총 학습시간: {totalTime}초");
-                    return totalTime;
+                    System.Diagnostics.Debug.WriteLine($"[DB] {date:yyyy-MM-dd} 과목 '{subjectName}' 오늘 학습시간: {studyTimeSeconds}초");
+                    return studyTimeSeconds;
+                }
+            });
+        }
+
+        // ✅ 수정: GetDailyTopicGroupStudyTimeSeconds 메소드 (올바른 컬럼명 사용)
+        public int GetDailyTopicGroupStudyTimeSeconds(DateTime date, string subjectName, string groupTitle)
+        {
+            return ExecuteWithRetry(() =>
+            {
+                lock (_lockObject)
+                {
+                    using var conn = GetConnection();
+                    conn.Open();
+                    using var cmd = conn.CreateCommand();
+
+                    cmd.CommandText = "SELECT COALESCE(TotalStudyTimeSeconds, 0) FROM DailyTopicGroup WHERE Date = @date AND SubjectName = @subjectName AND GroupTitle = @groupTitle";
+                    cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
+                    cmd.Parameters.AddWithValue("@subjectName", subjectName);
+                    cmd.Parameters.AddWithValue("@groupTitle", groupTitle);
+
+                    var result = cmd.ExecuteScalar();
+                    int studyTimeSeconds = Convert.ToInt32(result);
+
+                    System.Diagnostics.Debug.WriteLine($"[DB] {date:yyyy-MM-dd} 분류 '{groupTitle}' 오늘 학습시간: {studyTimeSeconds}초");
+                    return studyTimeSeconds;
                 }
             });
         }
@@ -1339,61 +1393,13 @@ namespace SP.Modules.Common.Helpers
                 System.Diagnostics.Debug.WriteLine($"[DB] Dispose 오류: {ex.Message}");
             }
         }
-        public int GetDailySubjectStudyTimeSeconds(DateTime date, string subjectName)
-        {
-            return ExecuteWithRetry(() =>
-            {
-                lock (_lockObject)
-                {
-                    using var conn = GetConnection();
-                    conn.Open();
-                    using var cmd = conn.CreateCommand();
-
-                    // DailySubject에서 StudyTimeMinutes를 초로 변환하여 반환
-                    cmd.CommandText = "SELECT COALESCE(StudyTimeMinutes * 60, 0) FROM DailySubject WHERE Date = @date AND SubjectName = @subjectName";
-                    cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
-                    cmd.Parameters.AddWithValue("@subjectName", subjectName);
-
-                    var result = cmd.ExecuteScalar();
-                    int studyTimeSeconds = Convert.ToInt32(result);
-
-                    System.Diagnostics.Debug.WriteLine($"[DB] {date:yyyy-MM-dd} 과목 '{subjectName}' 오늘 학습시간: {studyTimeSeconds}초");
-                    return studyTimeSeconds;
-                }
-            });
-        }
-
-        // ✅ 오늘의 분류별 학습시간 가져오기 (초 단위)
-        public int GetDailyTopicGroupStudyTimeSeconds(DateTime date, string subjectName, string groupTitle)
-        {
-            return ExecuteWithRetry(() =>
-            {
-                lock (_lockObject)
-                {
-                    using var conn = GetConnection();
-                    conn.Open();
-                    using var cmd = conn.CreateCommand();
-
-                    cmd.CommandText = "SELECT COALESCE(TotalStudyTime, 0) FROM DailyTopicGroup WHERE Date = @date AND SubjectName = @subjectName AND GroupTitle = @groupTitle";
-                    cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
-                    cmd.Parameters.AddWithValue("@subjectName", subjectName);
-                    cmd.Parameters.AddWithValue("@groupTitle", groupTitle);
-
-                    var result = cmd.ExecuteScalar();
-                    int studyTimeSeconds = Convert.ToInt32(result);
-
-                    System.Diagnostics.Debug.WriteLine($"[DB] {date:yyyy-MM-dd} 분류 '{groupTitle}' 오늘 학습시간: {studyTimeSeconds}초");
-                    return studyTimeSeconds;
-                }
-            });
-        }
     }
 
-    // 🆕 데이터 전송용 클래스들 추가
+    // ===== 데이터 전송용 클래스들 =====
     public class TopicGroupData
     {
         public string GroupTitle { get; set; } = string.Empty;
-        public int TotalStudyTime { get; set; }
+        public int TotalStudyTimeSeconds { get; set; } // ✅ 초단위
         public bool IsCompleted { get; set; }
         public List<TopicItemData> Topics { get; set; } = new();
     }
@@ -1402,8 +1408,7 @@ namespace SP.Modules.Common.Helpers
     {
         public string Name { get; set; } = string.Empty;
         public double Progress { get; set; }
-        public int StudyTimeMinutes { get; set; }
+        public int StudyTimeSeconds { get; set; } // ✅ 초단위
         public bool IsCompleted { get; set; }
     }
-
 }
