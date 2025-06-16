@@ -22,7 +22,14 @@ namespace SP.Modules.Subjects.Models
             }
         }
 
-        private double _progress=0.0;
+        // 🆕 Content 속성 추가 (Name과 동일한 역할)
+        public string Content
+        {
+            get => _name;
+            set => Name = value;
+        }
+
+        private double _progress = 0.0;
         public double Progress
         {
             get => _progress;
@@ -30,7 +37,7 @@ namespace SP.Modules.Subjects.Models
             {
                 if (_progress != value)
                 {
-                    _progress = Math.Max(0.0, Math.Min(1.0, value)); // 0-1 사이로 제한;
+                    _progress = Math.Max(0.0, Math.Min(1.0, value)); // 0-1 사이로 제한
                     OnPropertyChanged(nameof(Progress));
                     OnPropertyChanged(nameof(ProgressTooltip));
                     OnPropertyChanged(nameof(StudyTimeText));
@@ -52,7 +59,7 @@ namespace SP.Modules.Subjects.Models
                     OnPropertyChanged(nameof(ProgressTooltip));
                     OnPropertyChanged(nameof(StudyTimeText));
 
-                    //  학습 시간에 따라 Progress 자동 계산 (예: 120분 = 100%)
+                    // 학습 시간에 따라 Progress 자동 계산 (예: 120분 = 100%)
                     if (_studyTimeMinutes > 0)
                     {
                         Progress = Math.Min(1.0, _studyTimeMinutes / 120.0);
@@ -61,7 +68,7 @@ namespace SP.Modules.Subjects.Models
             }
         }
 
-        //  드래그 앤 드롭을 위한 부모 정보
+        // 드래그 앤 드롭을 위한 부모 정보
         public string ParentTopicGroupName { get; set; } = string.Empty;
         public string ParentSubjectName { get; set; } = string.Empty;
 
@@ -89,8 +96,9 @@ namespace SP.Modules.Subjects.Models
 
         public TopicItem()
         {
-            // Progress에 따라 임시 학습 시간 설정 (실제로는 DB에서 가져와야 함)
-            StudyTimeMinutes = (int)(Progress * 120);
+            // 초기값 설정
+            Progress = 0.0;
+            StudyTimeMinutes = 0;
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
