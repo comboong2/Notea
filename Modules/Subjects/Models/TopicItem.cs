@@ -68,18 +68,38 @@ namespace SP.Modules.Subjects.Models
             }
         }
 
+        // 🆕 체크 상태 추가 - DB 저장 기능 포함
+        private bool _isCompleted = false;
+        public bool IsCompleted
+        {
+            get => _isCompleted;
+            set
+            {
+                if (_isCompleted != value)
+                {
+                    _isCompleted = value;
+                    OnPropertyChanged(nameof(IsCompleted));
+
+                    // 🆕 체크 상태 변경 시 DB에 저장
+                    SaveCheckStateToDatabase();
+                }
+            }
+        }
+
         // 드래그 앤 드롭을 위한 부모 정보
         public string ParentTopicGroupName { get; set; } = string.Empty;
         public string ParentSubjectName { get; set; } = string.Empty;
 
-        // Progress Bar Tooltip
+        // 🆕 Progress Bar Tooltip - 00:00:00 형식으로 수정
         public string ProgressTooltip
         {
             get
             {
-                var hours = StudyTimeMinutes / 60;
-                var minutes = StudyTimeMinutes % 60;
-                return $"{hours:D2}:{minutes:D2}:{0:D2}"; // HH:MM:SS 형식
+                var totalSeconds = StudyTimeMinutes * 60;
+                var hours = totalSeconds / 3600;
+                var minutes = (totalSeconds % 3600) / 60;
+                var seconds = totalSeconds % 60;
+                return $"{hours:D2}:{minutes:D2}:{seconds:D2}";
             }
         }
 
@@ -99,6 +119,25 @@ namespace SP.Modules.Subjects.Models
             // 초기값 설정
             Progress = 0.0;
             StudyTimeMinutes = 0;
+            IsCompleted = false;
+        }
+
+        // 🆕 체크 상태를 DB에 저장하는 메소드
+        private void SaveCheckStateToDatabase()
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(ParentSubjectName) && !string.IsNullOrEmpty(ParentTopicGroupName) && !string.IsNullOrEmpty(Name))
+                {
+                    var dbHelper = SP.Modules.Common.Helpers.DatabaseHelper.Instance;
+                    dbHelper.UpdateDailyTopicItemCompletion(DateTime.Today, ParentSubjectName, ParentTopicGroupName, Name, IsCompleted);
+                    System.Diagnostics.Debug.WriteLine($"[TopicItem] 체크 상태 저장: {Name} = {IsCompleted}");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[TopicItem] 체크 상태 저장 오류: {ex.Message}");
+            }
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
