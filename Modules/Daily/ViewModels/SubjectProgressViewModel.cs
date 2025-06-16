@@ -96,8 +96,8 @@ namespace SP.Modules.Daily.ViewModels
         public ObservableCollection<TopicGroupViewModel> TopicGroups { get; set; } = new();
 
         // 🆕 무한 루프 방지를 위한 플래그들
-        private bool _isUpdatingFromDatabase = false;
-        private bool _isSavingToDatabase = false;
+        public bool _isUpdatingFromDatabase = false;
+        public bool _isSavingToDatabase = false;
 
         public SubjectProgressViewModel()
         {

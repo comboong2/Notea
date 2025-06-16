@@ -65,8 +65,10 @@ namespace SP.Modules.Daily.ViewModels
         public ICommand StartAddCommand { get; }
         public ICommand DeleteTodoCommand { get; }
 
-        // 무한 루프 방지 플래그
+        // 🆕 무한 루프 방지를 위한 강화된 플래그들
         private bool _isLoadingSubjects = false;
+        private bool _isLoadingFromDatabase = false;
+        private bool _hasLoadedOnce = false; // 초기 로드 완료 플래그
 
         public DailyBodyViewModel(DateTime appStartDate)
         {
@@ -91,32 +93,54 @@ namespace SP.Modules.Daily.ViewModels
         // 공유 데이터 설정 메소드 - 수정됨
         public void SetSharedSubjects(ObservableCollection<SubjectProgressViewModel> sharedSubjects)
         {
-            // 기존 데이터를 새로운 공유 컬렉션으로 이동
-            if (Subjects != null && Subjects.Count > 0)
+            // 🆕 로딩 플래그 설정으로 이벤트 차단
+            _isLoadingFromDatabase = true;
+
+            try
             {
-                var existingData = Subjects.ToList();
-                foreach (var item in existingData)
+                // 기존 데이터를 새로운 공유 컬렉션으로 이동
+                if (Subjects != null && Subjects.Count > 0)
                 {
-                    if (!sharedSubjects.Any(s => string.Equals(s.SubjectName, item.SubjectName, StringComparison.OrdinalIgnoreCase)))
+                    var existingData = Subjects.ToList();
+                    foreach (var item in existingData)
                     {
-                        sharedSubjects.Add(item);
+                        if (!sharedSubjects.Any(s => string.Equals(s.SubjectName, item.SubjectName, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            sharedSubjects.Add(item);
+                        }
                     }
                 }
+
+                Subjects = sharedSubjects;
+                System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 공유 데이터로 전환됨: {Subjects.Count}개 항목");
+
+                // 🆕 공유 데이터로 전환한 후에만 한 번 로드
+                if (!_hasLoadedOnce)
+                {
+                    LoadDailySubjects(SelectedDate);
+                    _hasLoadedOnce = true;
+                }
             }
-
-            Subjects = sharedSubjects;
-            System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 공유 데이터로 전환됨: {Subjects.Count}개 항목");
-
-            // 공유 데이터로 전환한 후 저장된 데이터 다시 로드
-            LoadDailySubjects(SelectedDate);
+            finally
+            {
+                _isLoadingFromDatabase = false;
+            }
         }
 
         private void Subjects_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
         {
-            // 무한 루프 방지를 위한 플래그 체크
-            if (_isLoadingSubjects) return;
+            // 🆕 더 강화된 플래그 체크
+            //if (_isLoadingSubjects || _isLoadingFromDatabase)
+            //{
+            //    System.Diagnostics.Debug.WriteLine("[DailyBodyViewModel] Subjects_CollectionChanged 무시됨 (로딩 중)");
+            //    return;
+            //}
 
-            SaveDailySubjects();
+            //System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] Subjects_CollectionChanged 발생. 현재 개수: {Subjects.Count}");
+            //SaveDailySubjects();
+
+            System.Diagnostics.Debug.WriteLine("[DailyBodyViewModel] SaveDailySubjects 호출됨 - 임시 비활성화");
+            return;
         }
 
         private void AddTodo()
@@ -192,12 +216,10 @@ namespace SP.Modules.Daily.ViewModels
 
         public void LoadDailyData(DateTime date)
         {
-            // 같은 날짜면 다시 로딩하지 않음 (중복 방지) - 조건 완화
-            if (SelectedDate.Date == date.Date && TodoList.Count > 0 && !string.IsNullOrEmpty(Comment))
+            // 🆕 같은 날짜에 대한 중복 로딩 방지
+            if (SelectedDate.Date == date.Date && _hasLoadedOnce)
             {
-                System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 같은 날짜 데이터 이미 로드됨. DailySubjects만 다시 로드.");
-                // DailySubjects는 항상 다시 로드 (다른 곳에서 변경될 수 있음)
-                LoadDailySubjects(date);
+                System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 같은 날짜 데이터 이미 로드됨. 스킵.");
                 return;
             }
 
@@ -229,147 +251,135 @@ namespace SP.Modules.Daily.ViewModels
             }
             System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] TodoList에 {TodoList.Count}개 항목 추가됨.");
 
-            // 오늘 할 일 과목 리스트 불러오기
-            LoadDailySubjects(date);
+            // 오늘 할 일 과목 리스트 불러오기 (한 번만)
+            if (!_hasLoadedOnce)
+            {
+                LoadDailySubjects(date);
+                _hasLoadedOnce = true;
+            }
         }
 
         private void LoadDailySubjects(DateTime date)
         {
-            _isLoadingSubjects = true; // 무한 루프 방지 플래그 설정
+            if (_isLoadingSubjects)
+            {
+                System.Diagnostics.Debug.WriteLine("[DailyBodyViewModel] 이미 로딩 중이므로 스킵됨");
+                return;
+            }
+
+            _isLoadingSubjects = true;
+            System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] LoadDailySubjects 시작 - 날짜: {date:yyyy-MM-dd}");
 
             try
             {
-                // 🆕 TopicGroups도 함께 로드하는 새로운 메소드 사용
+                // ⭐ 1단계: DB 중복 데이터 정리 (임시)
+                _db.CleanupDuplicateData(date);
+
+                // ⭐ 2단계: 모든 이벤트 차단
+                Subjects.CollectionChanged -= Subjects_CollectionChanged;
+
+                // 3단계: 데이터 로드
                 var dailySubjectsWithGroups = _db.GetDailySubjectsWithTopicGroups(date);
-                System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] DB에서 {dailySubjectsWithGroups.Count}개 DailySubject (TopicGroups 포함) 로드됨");
+                System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] DB에서 {dailySubjectsWithGroups.Count}개 DailySubject 로드됨");
 
-                // 저장된 데이터가 있으면 복원
-                if (dailySubjectsWithGroups.Count > 0)
+                // ⭐ 4단계: 기존 데이터 완전 초기화
+                foreach (var subject in Subjects.ToList())
                 {
-                    // 기존 컬렉션 클리어하지 않고 업데이트
-                    foreach (var (subjectName, progress, studyTimeMinutes, topicGroupsData) in dailySubjectsWithGroups)
-                    {
-                        var existingSubject = Subjects.FirstOrDefault(s =>
-                            string.Equals(s.SubjectName, subjectName, StringComparison.OrdinalIgnoreCase));
-
-                        if (existingSubject != null)
-                        {
-                            // 🆕 기존 과목을 안전하게 업데이트 (무한루프 방지)
-                            var restoredTopicGroups = new ObservableCollection<TopicGroupViewModel>();
-
-                            // TopicGroups 복원
-                            foreach (var groupData in topicGroupsData)
-                            {
-                                var topicGroup = new TopicGroupViewModel
-                                {
-                                    GroupTitle = groupData.GroupTitle,
-                                    TotalStudyTime = groupData.TotalStudyTime,
-                                    IsCompleted = groupData.IsCompleted,
-                                    ParentSubjectName = subjectName,
-                                    Topics = new ObservableCollection<SP.Modules.Subjects.Models.TopicItem>()
-                                };
-
-                                // Topics 복원
-                                foreach (var topicData in groupData.Topics)
-                                {
-                                    topicGroup.Topics.Add(new SP.Modules.Subjects.Models.TopicItem
-                                    {
-                                        Name = topicData.Name,
-                                        Progress = topicData.Progress,
-                                        StudyTimeMinutes = topicData.StudyTimeMinutes,
-                                        IsCompleted = topicData.IsCompleted,
-                                        ParentTopicGroupName = groupData.GroupTitle,
-                                        ParentSubjectName = subjectName
-                                    });
-                                }
-
-                                restoredTopicGroups.Add(topicGroup);
-                            }
-
-                            // 🆕 안전한 업데이트 메소드 사용 (CollectionChanged 이벤트 발생 안함)
-                            existingSubject.UpdateFromDatabase(progress, studyTimeMinutes, restoredTopicGroups);
-
-                            System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 기존 과목 업데이트: {subjectName} ({topicGroupsData.Count}개 그룹)");
-                        }
-                        else
-                        {
-                            // 새 과목 추가
-                            var newSubject = new SubjectProgressViewModel
-                            {
-                                SubjectName = subjectName,
-                                Progress = progress,
-                                StudyTimeMinutes = studyTimeMinutes
-                            };
-
-                            // TopicGroups 추가 (안전한 방법)
-                            var restoredTopicGroups = new ObservableCollection<TopicGroupViewModel>();
-                            foreach (var groupData in topicGroupsData)
-                            {
-                                var topicGroup = new TopicGroupViewModel
-                                {
-                                    GroupTitle = groupData.GroupTitle,
-                                    TotalStudyTime = groupData.TotalStudyTime,
-                                    IsCompleted = groupData.IsCompleted,
-                                    ParentSubjectName = subjectName,
-                                    Topics = new ObservableCollection<SP.Modules.Subjects.Models.TopicItem>()
-                                };
-
-                                // Topics 추가
-                                foreach (var topicData in groupData.Topics)
-                                {
-                                    topicGroup.Topics.Add(new SP.Modules.Subjects.Models.TopicItem
-                                    {
-                                        Name = topicData.Name,
-                                        Progress = topicData.Progress,
-                                        StudyTimeMinutes = topicData.StudyTimeMinutes,
-                                        IsCompleted = topicData.IsCompleted,
-                                        ParentTopicGroupName = groupData.GroupTitle,
-                                        ParentSubjectName = subjectName
-                                    });
-                                }
-
-                                restoredTopicGroups.Add(topicGroup);
-                            }
-
-                            // 🆕 초기 생성 시에도 안전한 방법 사용
-                            newSubject.UpdateFromDatabase(progress, studyTimeMinutes, restoredTopicGroups);
-                            Subjects.Add(newSubject);
-
-                            System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 새 과목 추가: {subjectName} ({topicGroupsData.Count}개 그룹)");
-                        }
-                    }
-
-                    // DB에 없는 과목들은 제거 (선택적)
-                    var subjectsToRemove = Subjects.Where(s =>
-                        !dailySubjectsWithGroups.Any(ds => string.Equals(ds.SubjectName, s.SubjectName, StringComparison.OrdinalIgnoreCase)))
-                        .ToList();
-
-                    foreach (var subjectToRemove in subjectsToRemove)
-                    {
-                        Subjects.Remove(subjectToRemove);
-                        System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] DB에 없는 과목 제거: {subjectToRemove.SubjectName}");
-                    }
+                    subject.TopicGroups.CollectionChanged -= null; // 모든 이벤트 해제
                 }
-                else
+                Subjects.Clear();
+
+                // 5단계: 새 데이터로 채우기
+                var processedSubjects = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var (subjectName, progress, studyTimeMinutes, topicGroupsData) in dailySubjectsWithGroups)
                 {
-                    System.Diagnostics.Debug.WriteLine("[DailyBodyViewModel] 저장된 DailySubject가 없음");
+                    // 중복 체크
+                    if (processedSubjects.Contains(subjectName))
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 중복 과목 스킵: {subjectName}");
+                        continue;
+                    }
+                    processedSubjects.Add(subjectName);
+
+                    // 새 SubjectProgressViewModel 생성
+                    var newSubject = new SubjectProgressViewModel
+                    {
+                        SubjectName = subjectName,
+                        Progress = progress,
+                        StudyTimeMinutes = studyTimeMinutes
+                    };
+
+                    // TopicGroups 생성 (이벤트 없이)
+                    var restoredTopicGroups = new ObservableCollection<TopicGroupViewModel>();
+                    foreach (var groupData in topicGroupsData)
+                    {
+                        var topicGroup = new TopicGroupViewModel
+                        {
+                            GroupTitle = groupData.GroupTitle,
+                            TotalStudyTime = groupData.TotalStudyTime,
+                            IsCompleted = groupData.IsCompleted,
+                            ParentSubjectName = subjectName,
+                            Topics = new ObservableCollection<SP.Modules.Subjects.Models.TopicItem>()
+                        };
+
+                        // Topics 추가
+                        foreach (var topicData in groupData.Topics)
+                        {
+                            topicGroup.Topics.Add(new SP.Modules.Subjects.Models.TopicItem
+                            {
+                                Name = topicData.Name,
+                                Progress = topicData.Progress,
+                                StudyTimeMinutes = topicData.StudyTimeMinutes,
+                                IsCompleted = topicData.IsCompleted,
+                                ParentTopicGroupName = groupData.GroupTitle,
+                                ParentSubjectName = subjectName
+                            });
+                        }
+
+                        restoredTopicGroups.Add(topicGroup);
+                    }
+
+                    // ⭐ 완전히 새로운 방식: 직접 할당 (UpdateFromDatabase 사용 안 함)
+                    newSubject._isUpdatingFromDatabase = true; // 직접 플래그 설정
+                    try
+                    {
+                        foreach (var group in restoredTopicGroups)
+                        {
+                            newSubject.TopicGroups.Add(group);
+                        }
+                    }
+                    finally
+                    {
+                        newSubject._isUpdatingFromDatabase = false;
+                    }
+
+                    Subjects.Add(newSubject);
+                    System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 과목 추가됨: {subjectName} ({topicGroupsData.Count}개 그룹)");
                 }
 
                 System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 최종 과목 수: {Subjects.Count}개");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 오늘 할 일 과목 로드 오류: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] LoadDailySubjects 오류: {ex.Message}");
             }
             finally
             {
-                _isLoadingSubjects = false; // 플래그 해제
+                // ⭐ 6단계: 이벤트 재연결
+                Subjects.CollectionChanged += Subjects_CollectionChanged;
+                _isLoadingSubjects = false;
+                System.Diagnostics.Debug.WriteLine("[DailyBodyViewModel] LoadDailySubjects 완료");
             }
         }
 
         private void SaveDailySubjects()
         {
-            if (_isLoadingSubjects) return; // 로딩 중이면 저장하지 않음
+            if (_isLoadingSubjects || _isLoadingFromDatabase)
+            {
+                System.Diagnostics.Debug.WriteLine("[DailyBodyViewModel] SaveDailySubjects 스킵됨 (로딩 중)");
+                return; // 로딩 중이면 저장하지 않음
+            }
 
             try
             {
@@ -379,14 +389,12 @@ namespace SP.Modules.Daily.ViewModels
                     .Select(g => g.First())
                     .ToList();
 
-                // 🆕 각 SubjectProgressViewModel의 저장 로직을 직접 호출하지 않고
-                // 여기서 한 번에 저장 (중복 저장 방지)
+                // 🆕 일괄 저장 방식으로 중복 저장 방지
                 _db.RemoveAllDailySubjects(SelectedDate);
 
                 for (int i = 0; i < uniqueSubjects.Count; i++)
                 {
                     var subject = uniqueSubjects[i];
-                    // 🆕 개별 과목의 저장 메소드를 호출하지 않고 여기서 직접 저장
                     _db.SaveDailySubjectWithTopicGroups(SelectedDate, subject.SubjectName, subject.Progress, subject.StudyTimeMinutes, i, subject.TopicGroups);
                 }
 
@@ -447,6 +455,9 @@ namespace SP.Modules.Daily.ViewModels
                     // 날짜 변경 시 InfoTitle과 InfoContent도 업데이트
                     OnPropertyChanged(nameof(InfoTitle));
                     OnPropertyChanged(nameof(InfoContent));
+
+                    // 🆕 날짜 변경 시 로드 플래그 리셋
+                    _hasLoadedOnce = false;
                 }
             }
         }
