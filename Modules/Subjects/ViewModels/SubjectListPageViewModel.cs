@@ -8,18 +8,9 @@ namespace SP.Modules.Subjects.ViewModels
 {
     public class SubjectListPageViewModel : ViewModelBase
     {
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-=======
-        // 싱글톤 인스턴스 사용
-        private readonly DatabaseHelper _db = DatabaseHelper.Instance;
-
->>>>>>> Stashed changes
-=======
         // 싱글톤 DB 헬퍼 사용
         private readonly DatabaseHelper _db = DatabaseHelper.Instance;
 
->>>>>>> 624f03b473237ab5ecfd5c52cc3b3d95e280b244
         public ObservableCollection<SubjectGroupViewModel> Subjects { get; set; } = new();
 
         private bool _isAdding;
@@ -74,25 +65,11 @@ namespace SP.Modules.Subjects.ViewModels
                 }
             });
         }
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-        private void LoadSubjects()
-        {
-            var helper = new DatabaseHelper();
-            var subjectList = helper.LoadSubjectsWithGroups(); // 이 메서드 구현 필요
-=======
-=======
 
-        private void LoadSubjects()
-        {
-            var subjectList = _db.LoadSubjectsWithGroups();
->>>>>>> 624f03b473237ab5ecfd5c52cc3b3d95e280b244
-
-        // ✅ 실제 DB에서 과목 로드 (더미 데이터 제거)
+        // 실제 DB에서 과목 로드
         private void LoadSubjects()
         {
             Subjects.Clear();
->>>>>>> Stashed changes
 
             // 전체 학습시간 계산 및 설정
             int totalAllSubjectsTime = _db.GetTotalAllSubjectsStudyTime();
@@ -104,19 +81,15 @@ namespace SP.Modules.Subjects.ViewModels
                 Subjects.Add(subject);
             }
         }
-<<<<<<< HEAD
 
-<<<<<<< Updated upstream
-=======
         private void UpdateGlobalTotalTime()
         {
             int totalAllSubjectsTime = _db.GetTotalAllSubjectsStudyTime();
             SubjectGroupViewModel.SetGlobalTotalTime(totalAllSubjectsTime);
 
-            // 모든 과목의 진행률 업데이트 (접근 가능한 메서드 사용)
+            // 모든 과목의 진행률 업데이트
             foreach (var subject in Subjects)
             {
-                // OnPropertyChanged는 protected이므로 NotifyPropertyChanged 호출
                 subject.NotifyProgressChanged();
             }
         }
@@ -126,8 +99,5 @@ namespace SP.Modules.Subjects.ViewModels
         {
             LoadSubjects();
         }
->>>>>>> Stashed changes
-=======
->>>>>>> 624f03b473237ab5ecfd5c52cc3b3d95e280b244
     }
 }

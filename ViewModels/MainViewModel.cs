@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
 using System.Windows;
 using System.Windows.Input;
 using SP.Modules.Common.ViewModels;
@@ -25,6 +27,9 @@ namespace SP.ViewModels
         private readonly DailyBodyView _dailyBodyView;
         private readonly SubjectListPageHeaderView _subjectHeaderView;
         private readonly SubjectListPageBodyView _subjectBodyView;
+
+        // 🆕 공유 데이터 소스 - 두 페이지에서 모두 사용
+        public ObservableCollection<SubjectProgressViewModel> SharedSubjectProgress { get; set; }
 
         private LeftSidebarViewModel _sidebarViewModel;
         public LeftSidebarViewModel SidebarViewModel
@@ -93,6 +98,9 @@ namespace SP.ViewModels
 
         public MainViewModel()
         {
+            // 🆕 공유 데이터 소스 초기화
+            SharedSubjectProgress = new ObservableCollection<SubjectProgressViewModel>();
+
             // 사이드바 ViewModel 초기화
             SidebarViewModel = new LeftSidebarViewModel("main");
 
@@ -100,6 +108,9 @@ namespace SP.ViewModels
             _dailyHeaderVM = new DailyHeaderViewModel();
             _dailyBodyVM = new DailyBodyViewModel(AppStartDate);
             _subjectListPageVM = new SubjectListPageViewModel();
+
+            // 🆕 DailyBodyViewModel의 Subjects를 공유 데이터로 교체
+            _dailyBodyVM.SetSharedSubjects(SharedSubjectProgress);
 
             // View들 생성 및 DataContext 설정 (한 번만)
             _dailyHeaderView = new DailyHeaderView { DataContext = _dailyHeaderVM };
@@ -129,7 +140,14 @@ namespace SP.ViewModels
             {
                 HeaderContent = _subjectHeaderView;
                 BodyContent = _subjectBodyView;
+
+                // 과목 페이지로 전환할 때 사이드바 컨텍스트 변경
                 SidebarViewModel.SetContext("today");
+
+                // 공유 데이터 설정
+                SidebarViewModel.SetSharedSubjectProgress(SharedSubjectProgress);
+
+                System.Diagnostics.Debug.WriteLine($"[MainViewModel] 과목페이지로 전환 - 공유 데이터 항목 수: {SharedSubjectProgress.Count}");
             });
         }
 

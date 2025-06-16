@@ -6,16 +6,17 @@ using System.Windows.Threading;
 using SP.ViewModels;
 using SP.Modules.Common.Models;
 using SP.Modules.Common.Helpers;
+using System.Windows;
 
 namespace SP.Modules.Common.ViewModels
 {
-    public class RightSidebarViewModel : ViewModelBase
+    public class RightSidebarViewModel : ViewModelBase, IDisposable
     {
         // 싱글톤 DB 헬퍼 사용
         private readonly DatabaseHelper _db = DatabaseHelper.Instance;
         private DispatcherTimer _timer;
-        private TimeSpan _currentSessionTime; // 현재 세션 시간 (내부적으로만 사용)
-        private TimeSpan _totalStudyTime;     // 총 학습 시간 (화면에 표시)
+        private TimeSpan _currentSessionTime; // 현재 세션 시간
+        private TimeSpan _todayTotalTime;     // 오늘의 총 학습 시간 (DB에서 로드)
         private bool _isRunning;
         private DateTime _sessionStartTime;   // 세션 시작 시간
 
@@ -24,10 +25,9 @@ namespace SP.Modules.Common.ViewModels
         {
             get
             {
-                // 저장된 총 시간 + 현재 세션 시간을 모두 표시
-                var displayTime = _totalStudyTime.Add(_currentSessionTime);
-                var result = displayTime.ToString(@"hh\:mm\:ss");
-                return result;
+                // 오늘의 저장된 총 시간 + 현재 실행중인 세션 시간
+                var displayTime = _todayTotalTime.Add(_currentSessionTime);
+                return displayTime.ToString(@"hh\:mm\:ss");
             }
         }
 
@@ -64,18 +64,30 @@ namespace SP.Modules.Common.ViewModels
                     note.IsSelected = false;
             });
 
-            LoadTotalStudyTime();
+            LoadTodayTotalTime();
             LoadMemos();
 
-            // 앱 종료 시 세션 저장을 위한 이벤트 등록
-            System.Windows.Application.Current.Exit += (s, e) => EndSession();
+            // 앱 종료 시 세션 저장을 위한 이벤트 등록 (여러 방법으로 보장)
+            if (System.Windows.Application.Current != null)
+            {
+                System.Windows.Application.Current.Exit += Application_Exit;
+                System.Windows.Application.Current.SessionEnding += Application_SessionEnding;
+            }
+        }
+
+        private void Application_Exit(object sender, ExitEventArgs e)
+        {
+            EndSession();
+        }
+
+        private void Application_SessionEnding(object sender, SessionEndingCancelEventArgs e)
+        {
+            EndSession();
         }
 
         private void OnTimerTick(object sender, EventArgs e)
         {
             _currentSessionTime = _currentSessionTime.Add(TimeSpan.FromSeconds(1));
-
-            // 실시간으로 총 학습시간 업데이트를 위해 TotalStudyTimeDisplay 다시 계산
             OnPropertyChanged(nameof(TotalStudyTimeDisplay));
         }
 
@@ -83,99 +95,90 @@ namespace SP.Modules.Common.ViewModels
         {
             if (_isRunning)
             {
-                // 타이머 일시정지 - 시간 저장하지만 초기화하지 않음
+                // 타이머 일시정지
                 _timer.Stop();
 
-                if (_currentSessionTime.TotalSeconds > 0)
+                // 현재 세션이 있으면 DB에 저장 (1초 이상이면 저장)
+                if (_currentSessionTime.TotalSeconds >= 1)
                 {
-                    SaveStudySession();
-                    _totalStudyTime = _totalStudyTime.Add(_currentSessionTime);
-                    System.Diagnostics.Debug.WriteLine($"[Timer] 일시정지 시 누적 저장: 세션={_currentSessionTime.ToString(@"hh\:mm\:ss")}, 총합={_totalStudyTime.ToString(@"hh\:mm\:ss")}");
+                    SaveCurrentSession();
 
-                    // 현재 세션 시간은 유지 (초기화하지 않음)
-                    // _currentSessionTime = TimeSpan.Zero; // 이 줄을 주석 처리
+                    // 저장된 시간을 오늘 총 시간에 추가
+                    _todayTotalTime = _todayTotalTime.Add(_currentSessionTime);
+
+                    // 현재 세션 초기화
+                    _currentSessionTime = TimeSpan.Zero;
+
+                    System.Diagnostics.Debug.WriteLine($"[Timer] 세션 저장 완료. 오늘 총 시간: {_todayTotalTime.ToString(@"hh\:mm\:ss")}");
                 }
 
                 OnPropertyChanged(nameof(TotalStudyTimeDisplay));
             }
             else
             {
-                // 타이머 재시작 - 기존 시간부터 계속
-                _sessionStartTime = DateTime.Now.Subtract(_currentSessionTime); // 시작 시간 조정
+                // 타이머 시작/재시작
+                _sessionStartTime = DateTime.Now;
                 _timer.Start();
-                System.Diagnostics.Debug.WriteLine($"[Timer] 타이머 재시작 - 현재 세션: {_currentSessionTime.ToString(@"hh\:mm\:ss")}");
+                System.Diagnostics.Debug.WriteLine($"[Timer] 타이머 시작");
             }
 
             _isRunning = !_isRunning;
             OnPropertyChanged(nameof(TimerButtonText));
         }
 
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-=======
-=======
->>>>>>> 624f03b473237ab5ecfd5c52cc3b3d95e280b244
-        // 세션을 완전히 종료하고 저장하는 메소드 (별도로 호출 필요)
+        // 현재 세션을 DB에 저장
+        private void SaveCurrentSession()
+        {
+            try
+            {
+                var endTime = DateTime.Now;
+                _db.SaveStudySession(_sessionStartTime, endTime, (int)_currentSessionTime.TotalSeconds);
+
+                System.Diagnostics.Debug.WriteLine($"[Timer] 세션 저장됨: {_currentSessionTime.ToString(@"hh\:mm\:ss")}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Timer] 세션 저장 오류: {ex.Message}");
+            }
+        }
+
+        // 세션을 완전히 종료하고 저장하는 메소드
         public void EndSession()
         {
-            if (_currentSessionTime.TotalMinutes >= 1) // 1분 이상만 저장
+            if (_isRunning && _currentSessionTime.TotalSeconds >= 1)
             {
-                _totalStudyTime = _totalStudyTime.Add(_currentSessionTime);
-                SaveStudySession();
-                System.Diagnostics.Debug.WriteLine($"세션 종료 및 저장: {_currentSessionTime.ToString(@"hh\:mm\:ss")}");
+                SaveCurrentSession();
+                _todayTotalTime = _todayTotalTime.Add(_currentSessionTime);
+                System.Diagnostics.Debug.WriteLine($"[Timer] 앱 종료 시 세션 저장: {_currentSessionTime.ToString(@"hh\:mm\:ss")}");
             }
 
             // 세션 초기화
             _currentSessionTime = TimeSpan.Zero;
-            _timer.Stop();
+            _timer?.Stop();
             _isRunning = false;
 
             OnPropertyChanged(nameof(TotalStudyTimeDisplay));
             OnPropertyChanged(nameof(TimerButtonText));
         }
 
-        private void SaveStudySession()
+        // 오늘의 총 학습 시간을 DB에서 로드
+        private void LoadTodayTotalTime()
         {
             try
             {
-                // StudySession 테이블에 세션 정보 저장
-                _db.SaveStudySession(_sessionStartTime, DateTime.Now, (int)_currentSessionTime.TotalMinutes);
-
-                System.Diagnostics.Debug.WriteLine($"학습 세션 저장됨: {_currentSessionTime.ToString(@"hh\:mm\:ss")}");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"학습 세션 저장 오류: {ex.Message}");
-            }
-        }
-
-        private void LoadTotalStudyTime()
-        {
-            try
-            {
-                // 오늘의 총 학습 시간을 로드
-<<<<<<< HEAD
-                //var totalMinutes = _db.GetTotalStudyTimeMinutes(DateTime.Today);
-                //_totalStudyTime = TimeSpan.FromMinutes(totalMinutes);
-=======
-                var totalMinutes = _db.GetTotalStudyTimeMinutes(DateTime.Today);
-                _totalStudyTime = TimeSpan.FromMinutes(totalMinutes);
->>>>>>> 624f03b473237ab5ecfd5c52cc3b3d95e280b244
+                var totalSeconds = _db.GetTotalStudyTimeSeconds(DateTime.Today);
+                _todayTotalTime = TimeSpan.FromSeconds(totalSeconds);
                 OnPropertyChanged(nameof(TotalStudyTimeDisplay));
 
-                System.Diagnostics.Debug.WriteLine($"총 학습 시간 로드됨: {_totalStudyTime.ToString(@"hh\:mm\:ss")}");
+                System.Diagnostics.Debug.WriteLine($"[Timer] 오늘 총 학습 시간 로드됨: {_todayTotalTime.ToString(@"hh\:mm\:ss")}");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"총 학습 시간 로드 오류: {ex.Message}");
-                _totalStudyTime = TimeSpan.Zero;
+                System.Diagnostics.Debug.WriteLine($"[Timer] 총 학습 시간 로드 오류: {ex.Message}");
+                _todayTotalTime = TimeSpan.Zero;
             }
         }
 
-<<<<<<< HEAD
->>>>>>> Stashed changes
-=======
->>>>>>> 624f03b473237ab5ecfd5c52cc3b3d95e280b244
         private void AddMemo()
         {
             if (!string.IsNullOrWhiteSpace(NewMemoText))
@@ -213,6 +216,23 @@ namespace SP.Modules.Common.ViewModels
             }
             _db.DeleteNote(note.NoteId);
             LoadMemos();
+        }
+
+        // IDisposable 구현 (메모리 누수 방지)
+        public void Dispose()
+        {
+            // 종료 전에 세션 저장
+            EndSession();
+
+            _timer?.Stop();
+            _timer = null;
+
+            // 앱 종료 시 이벤트 해제
+            if (System.Windows.Application.Current != null)
+            {
+                System.Windows.Application.Current.Exit -= Application_Exit;
+                System.Windows.Application.Current.SessionEnding -= Application_SessionEnding;
+            }
         }
     }
 }

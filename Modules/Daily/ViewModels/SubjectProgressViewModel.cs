@@ -7,13 +7,23 @@ namespace SP.Modules.Daily.ViewModels
 {
     public class SubjectProgressViewModel : ViewModelBase
     {
-        public string SubjectName { get; set; }
+        private string _subjectName = string.Empty;
+        public string SubjectName
+        {
+            get => _subjectName;
+            set => SetProperty(ref _subjectName, value);
+        }
 
         private double _progress;
         public double Progress
         {
             get => _progress;
-            set => SetProperty(ref _progress, value);
+            set
+            {
+                SetProperty(ref _progress, value);
+                OnPropertyChanged(nameof(ProgressWidth));
+                OnPropertyChanged(nameof(Tooltip));
+            }
         }
 
         // 학습 시간 (분 단위로 저장)
@@ -51,14 +61,64 @@ namespace SP.Modules.Daily.ViewModels
             }
         }
 
-        public double ProgressWidth => 200 * Progress; // 바 너비 계산용
+        // Progress Bar 너비 계산 (동적 계산)
+        private double _maxWidth = 200; // 기본값
+        public double MaxWidth
+        {
+            get => _maxWidth;
+            set
+            {
+                _maxWidth = value;
+                OnPropertyChanged(nameof(ProgressWidth));
+            }
+        }
 
+        public double ProgressWidth => MaxWidth * Math.Max(0, Math.Min(1, Progress));
+
+        // TopicGroup 리스트 (드래그 앤 드롭으로 추가된 분류들)
         public ObservableCollection<TopicGroupViewModel> TopicGroups { get; set; } = new();
 
         public SubjectProgressViewModel()
         {
-            // 테스트용 데이터 - 실제로는 DB에서 가져와야 함
-            StudyTimeMinutes = (int)(Progress * 300); // Progress에 따라 임시 시간 설정
+            // 초기값 설정
+            Progress = 0.0;
+            StudyTimeMinutes = 0;
+        }
+
+        // 과목 진행률 업데이트 메소드
+        public void UpdateProgress(double newProgress)
+        {
+            Progress = Math.Max(0, Math.Min(1, newProgress)); // 0-1 사이로 제한
+        }
+
+        // 학습 시간 추가 메소드
+        public void AddStudyTime(int minutes)
+        {
+            StudyTimeMinutes += Math.Max(0, minutes);
+        }
+
+        // TopicGroup 추가 메소드
+        public void AddTopicGroup(TopicGroupViewModel topicGroup)
+        {
+            if (topicGroup != null && !TopicGroups.Contains(topicGroup))
+            {
+                TopicGroups.Add(topicGroup);
+            }
+        }
+
+        // TopicGroup 제거 메소드
+        public void RemoveTopicGroup(TopicGroupViewModel topicGroup)
+        {
+            if (topicGroup != null && TopicGroups.Contains(topicGroup))
+            {
+                TopicGroups.Remove(topicGroup);
+            }
+        }
+
+        // 과목 정보 요약
+        public override string ToString()
+        {
+            return $"{SubjectName} - {Progress:P1} ({StudyTimeText})";
         }
     }
 }
