@@ -54,20 +54,9 @@
             </Setter>
         </Style>
 
-        <!-- 드롭 시 시각적 피드백을 위한 스타일 -->
-        <Style x:Key="DropTargetStyle" TargetType="Border">
-            <Setter Property="Background" Value="Transparent"/>
-            <Style.Triggers>
-                <Trigger Property="Tag" Value="DragOver">
-                    <Setter Property="Background" Value="#E3F2FD"/>
-                    <Setter Property="BorderBrush" Value="#2196F3"/>
-                    <Setter Property="BorderThickness" Value="2"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
     </UserControl.Resources>
 
-    <Border x:Name="DropTargetBorder" Style="{StaticResource DropTargetStyle}">
+    <Border x:Name="DropTargetBorder">
         <!-- 과목 리스트 -->
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel Orientation="Vertical">

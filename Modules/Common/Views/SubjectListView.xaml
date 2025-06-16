@@ -24,7 +24,8 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{Binding SubjectName}" FontWeight="Bold" FontSize="16" VerticalAlignment="Center"
                                        x:Name="SubjectNameText"/>
-                            <Button Grid.Column="1" Command="{Binding ToggleCommand}" Style="{StaticResource FolderButtonStyle}" VerticalAlignment="Center"/>
+                            <Button Grid.Column="1" Command="{Binding ToggleCommand}" Style="{StaticResource FolderButtonStyle}" VerticalAlignment="Center"
+                                    Visibility="{Binding TopicGroups, Converter={StaticResource HasItemsToVisibilityConverter}}"/>
                         </Grid>
 
                         <!-- 토픽 그룹 - 드래그 가능하도록 수정 -->
