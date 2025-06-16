@@ -123,13 +123,12 @@ namespace SP.Modules.Common.Views
             if (e.Data.GetDataPresent("SubjectData") || e.Data.GetDataPresent("RemoveSubjectData"))
             {
                 e.Effects = DragDropEffects.Copy;
-                DropTargetBorder.Tag = "DragOver";
             }
             else
             {
                 e.Effects = DragDropEffects.None;
-                DropTargetBorder.Tag = null;
             }
+            DropTargetBorder.Tag = null;
             e.Handled = true;
         }
 
