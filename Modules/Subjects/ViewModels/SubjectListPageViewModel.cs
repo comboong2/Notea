@@ -9,6 +9,12 @@ namespace SP.Modules.Subjects.ViewModels
 {
     public class SubjectListPageViewModel : ViewModelBase
     {
+<<<<<<< Updated upstream
+=======
+        // 싱글톤 인스턴스 사용
+        private readonly DatabaseHelper _db = DatabaseHelper.Instance;
+
+>>>>>>> Stashed changes
         public ObservableCollection<SubjectGroupViewModel> Subjects { get; set; } = new();
 
         private bool _isAdding;
@@ -54,25 +60,63 @@ namespace SP.Modules.Subjects.ViewModels
                     {
                         SubjectId = subjectId,
                         SubjectName = NewSubjectText,
-                        TopicGroups = new ObservableCollection<TopicGroupViewModel>()
+                        TopicGroups = new ObservableCollection<TopicGroupViewModel>(),
+                        TotalStudyTime = 0
                     });
 
                     NewSubjectText = string.Empty;
                     IsAdding = false;
+
+                    // 전역 총 시간 업데이트
+                    UpdateGlobalTotalTime();
                 }
             });
         }
+<<<<<<< Updated upstream
         private void LoadSubjects()
         {
             var helper = new DatabaseHelper();
             var subjectList = helper.LoadSubjectsWithGroups(); // 이 메서드 구현 필요
+=======
 
+        // ✅ 실제 DB에서 과목 로드 (더미 데이터 제거)
+        private void LoadSubjects()
+        {
+            Subjects.Clear();
+>>>>>>> Stashed changes
+
+            // 전체 학습시간 계산 및 설정
+            int totalAllSubjectsTime = _db.GetTotalAllSubjectsStudyTime();
+            SubjectGroupViewModel.SetGlobalTotalTime(totalAllSubjectsTime);
+
+            var subjectList = _db.LoadSubjectsWithGroups();
             foreach (var subject in subjectList)
             {
                 Subjects.Add(subject);
             }
         }
 
+<<<<<<< Updated upstream
+=======
+        private void UpdateGlobalTotalTime()
+        {
+            int totalAllSubjectsTime = _db.GetTotalAllSubjectsStudyTime();
+            SubjectGroupViewModel.SetGlobalTotalTime(totalAllSubjectsTime);
+
+            // 모든 과목의 진행률 업데이트 (접근 가능한 메서드 사용)
+            foreach (var subject in Subjects)
+            {
+                // OnPropertyChanged는 protected이므로 NotifyPropertyChanged 호출
+                subject.NotifyProgressChanged();
+            }
+        }
+
+        // 외부에서 데이터 새로고침할 때 사용
+        public void RefreshData()
+        {
+            LoadSubjects();
+        }
+>>>>>>> Stashed changes
     }
 
 }

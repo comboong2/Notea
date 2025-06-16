@@ -70,6 +70,61 @@ namespace SP.Modules.Common.ViewModels
             OnPropertyChanged(nameof(TimerButtonText));
         }
 
+<<<<<<< Updated upstream
+=======
+        // 세션을 완전히 종료하고 저장하는 메소드 (별도로 호출 필요)
+        public void EndSession()
+        {
+            if (_currentSessionTime.TotalMinutes >= 1) // 1분 이상만 저장
+            {
+                _totalStudyTime = _totalStudyTime.Add(_currentSessionTime);
+                SaveStudySession();
+                System.Diagnostics.Debug.WriteLine($"세션 종료 및 저장: {_currentSessionTime.ToString(@"hh\:mm\:ss")}");
+            }
+
+            // 세션 초기화
+            _currentSessionTime = TimeSpan.Zero;
+            _timer.Stop();
+            _isRunning = false;
+
+            OnPropertyChanged(nameof(TotalStudyTimeDisplay));
+            OnPropertyChanged(nameof(TimerButtonText));
+        }
+
+        private void SaveStudySession()
+        {
+            try
+            {
+                // StudySession 테이블에 세션 정보 저장
+                _db.SaveStudySession(_sessionStartTime, DateTime.Now, (int)_currentSessionTime.TotalMinutes);
+
+                System.Diagnostics.Debug.WriteLine($"학습 세션 저장됨: {_currentSessionTime.ToString(@"hh\:mm\:ss")}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"학습 세션 저장 오류: {ex.Message}");
+            }
+        }
+
+        private void LoadTotalStudyTime()
+        {
+            try
+            {
+                // 오늘의 총 학습 시간을 로드
+                //var totalMinutes = _db.GetTotalStudyTimeMinutes(DateTime.Today);
+                //_totalStudyTime = TimeSpan.FromMinutes(totalMinutes);
+                OnPropertyChanged(nameof(TotalStudyTimeDisplay));
+
+                System.Diagnostics.Debug.WriteLine($"총 학습 시간 로드됨: {_totalStudyTime.ToString(@"hh\:mm\:ss")}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"총 학습 시간 로드 오류: {ex.Message}");
+                _totalStudyTime = TimeSpan.Zero;
+            }
+        }
+
+>>>>>>> Stashed changes
         private void AddMemo()
         {
             if (!string.IsNullOrWhiteSpace(NewMemoText))

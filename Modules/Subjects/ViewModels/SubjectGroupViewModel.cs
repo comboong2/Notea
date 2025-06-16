@@ -39,5 +39,12 @@ namespace SP.Modules.Subjects.ViewModels
             ? (double)TotalStudyTime / _totalAllSubjectsTime
             : 0;
         public double ProgressWidth => ProgressRatio * 200; // 200은 ProgressBar의 최대 너비에 맞게 조정
+
+        // ✅ 외부에서 진행률 업데이트를 위한 공개 메서드 추가
+        public void NotifyProgressChanged()
+        {
+            OnPropertyChanged(nameof(ProgressRatio));
+            OnPropertyChanged(nameof(ProgressWidth));
+        }
     }
 }
