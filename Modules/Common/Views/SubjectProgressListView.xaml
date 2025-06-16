@@ -1,4 +1,5 @@
-﻿<UserControl x:Class="SP.Modules.Common.Views.SubjectProgressListView"
+﻿<!-- 문제 2: 진행률 그래프 및 분류 표시 문제 해결 -->
+<UserControl x:Class="SP.Modules.Common.Views.SubjectProgressListView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:SP.Modules.Common.Views"
@@ -10,6 +11,8 @@
 
     <UserControl.Resources>
         <converters:ProgressToWidthConverter x:Key="ProgressToWidthConverter"/>
+        <converters:DynamicProgressToWidthConverter x:Key="DynamicProgressToWidthConverter"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
 
         <Style x:Key="ToDoCheckBoxStyle" TargetType="CheckBox">
             <Setter Property="Template">
@@ -63,25 +66,27 @@
                 <ItemsControl ItemsSource="{Binding Subjects}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <StackPanel Margin="0,0,0,0">
+                            <StackPanel Margin="0,0,0,10">
+                                <!-- 과목 헤더 -->
                                 <Grid Height="60">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="1*"/>
-                                        <ColumnDefinition Width="1*"/>
+                                        <ColumnDefinition Width="2*"/>
+                                        <ColumnDefinition Width="3*"/>
                                     </Grid.ColumnDefinitions>
 
                                     <!-- 과목명 -->
                                     <TextBlock Grid.Column="0" Text="{Binding SubjectName}" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"
-                                               MouseLeftButtonDown="SubjectName_MouseLeftButtonDown"
-                                               MouseMove="SubjectName_MouseMove"
-                                               Background="Transparent"/>
+                                                   MouseLeftButtonDown="SubjectName_MouseLeftButtonDown"
+                                                   MouseMove="SubjectName_MouseMove"
+                                                   Background="Transparent"/>
 
                                     <!-- 진행률 바 -->
-                                    <Border Grid.Column="1" Height="20" VerticalAlignment="Center"
-                                            ToolTip="{Binding Tooltip}" x:Name="ProgressBarContainer">
+                                    <Border Grid.Column="1" Height="20" VerticalAlignment="Center" Margin="10,0"
+                                                ToolTip="{Binding Tooltip}" x:Name="ProgressBarContainer"
+                                                BorderBrush="#DDDDDD" BorderThickness="1">
                                         <Grid>
-                                            <Rectangle Fill="#DDDDDD"/>
-                                            <Rectangle Fill="Black" HorizontalAlignment="Left">
+                                            <Rectangle Fill="#F5F5F5"/>
+                                            <Rectangle Fill="#4CAF50" HorizontalAlignment="Left">
                                                 <Rectangle.Width>
                                                     <MultiBinding Converter="{StaticResource DynamicProgressToWidthConverter}">
                                                         <Binding Path="Progress"/>
@@ -89,36 +94,90 @@
                                                     </MultiBinding>
                                                 </Rectangle.Width>
                                             </Rectangle>
+                                            <!-- 진행률 텍스트 표시 -->
+                                            <TextBlock Text="{Binding Progress, StringFormat=P0}" 
+                                                           HorizontalAlignment="Center" 
+                                                           VerticalAlignment="Center" 
+                                                           FontSize="10" 
+                                                           Foreground="Black"/>
                                         </Grid>
                                     </Border>
                                 </Grid>
 
-                                <!-- TopicGroups -->
-                                <ItemsControl ItemsSource="{Binding TopicGroups}" Margin="10,0,0,0">
+                                <!-- TopicGroups 표시 - 수정된 부분 -->
+                                <ItemsControl ItemsSource="{Binding TopicGroups}" Margin="20,0,0,0">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <StackPanel>
-                                                <ItemsControl ItemsSource="{Binding Topics}">
+                                            <StackPanel Margin="0,5">
+                                                <!-- 분류 제목 - 드래그 가능하도록 추가 -->
+                                                <Grid Height="40"
+                                                      MouseLeftButtonDown="TopicGroup_MouseLeftButtonDown"
+                                                      MouseMove="TopicGroup_MouseMove"
+                                                      Background="Transparent">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="2*"/>
+                                                        <ColumnDefinition Width="3*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <TextBlock Grid.Column="0" Text="{Binding GroupTitle}" 
+                                                               FontSize="14" FontWeight="SemiBold" 
+                                                               VerticalAlignment="Center" Margin="10,0"/>
+
+                                                    <!-- 분류 진행률 바 -->
+                                                    <Border Grid.Column="1" Height="15" VerticalAlignment="Center" Margin="10,0"
+                                                            ToolTip="{Binding GroupTitle}" x:Name="TopicGroupProgressContainer"
+                                                            BorderBrush="#CCCCCC" BorderThickness="1">
+                                                        <Grid>
+                                                            <Rectangle Fill="#F0F0F0"/>
+                                                            <Rectangle Fill="#2196F3" HorizontalAlignment="Left">
+                                                                <Rectangle.Width>
+                                                                    <MultiBinding Converter="{StaticResource DynamicProgressToWidthConverter}">
+                                                                        <Binding Path="ProgressRatio"/>
+                                                                        <Binding Path="ActualWidth" ElementName="TopicGroupProgressContainer"/>
+                                                                    </MultiBinding>
+                                                                </Rectangle.Width>
+                                                            </Rectangle>
+                                                        </Grid>
+                                                    </Border>
+
+                                                    <!-- 체크박스 -->
+                                                    <CheckBox Grid.Column="2" Style="{StaticResource ToDoCheckBoxStyle}" 
+                                                              VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                </Grid>
+
+                                                <!-- 개별 토픽 아이템들 (드래그 기능 없음) -->
+                                                <ItemsControl ItemsSource="{Binding Topics}" Margin="20,0,0,0">
                                                     <ItemsControl.ItemTemplate>
                                                         <DataTemplate>
-                                                            <Grid Height="60">
+                                                            <Grid Height="35" Margin="0,2">
                                                                 <Grid.ColumnDefinitions>
                                                                     <ColumnDefinition Width="Auto"/>
-                                                                    <ColumnDefinition Width="1*"/>
-                                                                    <ColumnDefinition Width="1*"/>
+                                                                    <ColumnDefinition Width="2*"/>
+                                                                    <ColumnDefinition Width="3*"/>
                                                                 </Grid.ColumnDefinitions>
 
-                                                                <CheckBox Width="20" Height="20" Style="{StaticResource ToDoCheckBoxStyle}"
+                                                                <CheckBox Grid.Column="0" Width="15" Height="15" 
+                                                                          Style="{StaticResource ToDoCheckBoxStyle}"
                                                                           VerticalAlignment="Center" Margin="0,0,10,0"/>
 
-                                                                <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="Bold" FontSize="14" VerticalAlignment="Center"/>
+                                                                <TextBlock Grid.Column="1" Text="{Binding Name}" 
+                                                                           FontSize="12" VerticalAlignment="Center"/>
 
-                                                                <Border Grid.Column="2" Height="20" VerticalAlignment="Center"
-                                                                        ToolTip="{Binding ProgressTooltip}">
+                                                                <!-- 개별 아이템 진행률 -->
+                                                                <Border Grid.Column="2" Height="12" VerticalAlignment="Center" Margin="10,0"
+                                                                        ToolTip="{Binding ProgressTooltip}" x:Name="TopicItemProgressContainer"
+                                                                        BorderBrush="#CCCCCC" BorderThickness="1">
                                                                     <Grid>
                                                                         <Rectangle Fill="#EEEEEE"/>
-                                                                        <Rectangle Fill="Black" HorizontalAlignment="Right"
-                                                                                   Width="{Binding Progress, Converter={StaticResource ProgressToWidthConverter}, ConverterParameter=200}"/>
+                                                                        <Rectangle Fill="#FF9800" HorizontalAlignment="Left">
+                                                                            <Rectangle.Width>
+                                                                                <MultiBinding Converter="{StaticResource DynamicProgressToWidthConverter}">
+                                                                                    <Binding Path="Progress"/>
+                                                                                    <Binding Path="ActualWidth" ElementName="TopicItemProgressContainer"/>
+                                                                                </MultiBinding>
+                                                                            </Rectangle.Width>
+                                                                        </Rectangle>
                                                                     </Grid>
                                                                 </Border>
                                                             </Grid>

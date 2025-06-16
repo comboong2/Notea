@@ -1,10 +1,10 @@
 ﻿using System;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using SP.Modules.Common.Helpers;
 using SP.Modules.Daily.ViewModels;
-using SP.Modules.Daily.Views;
 using SP.Modules.Subjects.ViewModels;
 using SP.ViewModels;
 
@@ -46,6 +46,7 @@ namespace SP.Modules.Common.Views
                     {
                         var dragData = new DataObject("SubjectData", subject);
                         DragDrop.DoDragDrop(grid, dragData, DragDropEffects.Copy);
+                        System.Diagnostics.Debug.WriteLine($"[DragDrop] 과목 '{subject.SubjectName}' 드래그 시작");
                     }
 
                     _isDragging = false;
@@ -53,7 +54,7 @@ namespace SP.Modules.Common.Views
             }
         }
 
-        // 분류(TopicGroup) 드래그 이벤트 추가
+        // 분류(TopicGroup) 드래그 이벤트 - 개선된 버전
         private void TopicGroup_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             _startPoint = e.GetPosition(null);
@@ -77,21 +78,25 @@ namespace SP.Modules.Common.Views
 
                     if (topicGroup != null)
                     {
-                        // 부모 과목명을 찾아서 설정
-                        var parentGrid = FindParent<Grid>(grid);
-                        while (parentGrid != null)
+                        // 부모 과목명 찾기 - 개선된 방법
+                        var parentSubject = FindParentSubject(grid);
+                        if (parentSubject != null)
                         {
-                            if (parentGrid.DataContext is SubjectGroupViewModel parentSubject)
-                            {
-                                topicGroup.ParentSubjectName = parentSubject.SubjectName;
-                                break;
-                            }
-                            parentGrid = FindParent<Grid>(parentGrid);
-                        }
+                            // TopicGroupViewModel에 부모 정보 설정
+                            topicGroup.ParentSubjectName = parentSubject.SubjectName;
 
-                        var dragData = new DataObject("TopicData", topicGroup);
-                        DragDrop.DoDragDrop(grid, dragData, DragDropEffects.Copy);
-                        System.Diagnostics.Debug.WriteLine($"[DragDrop] 분류 '{topicGroup.GroupTitle}' 드래그 시작 (부모: {topicGroup.ParentSubjectName})");
+                            // 드래그 데이터에 부모 정보도 함께 전달
+                            var dragData = new DataObject();
+                            dragData.SetData("TopicData", topicGroup);
+                            dragData.SetData("ParentSubjectName", parentSubject.SubjectName);
+
+                            DragDrop.DoDragDrop(grid, dragData, DragDropEffects.Copy);
+                            System.Diagnostics.Debug.WriteLine($"[DragDrop] 분류 '{topicGroup.GroupTitle}' 드래그 시작 (부모: {topicGroup.ParentSubjectName})");
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[DragDrop] 분류 '{topicGroup.GroupTitle}'의 부모 과목을 찾을 수 없음");
+                        }
                     }
 
                     _isDragging = false;
@@ -99,22 +104,33 @@ namespace SP.Modules.Common.Views
             }
         }
 
-        // 부모 요소 찾기 헬퍼 메소드
-        private T FindParent<T>(DependencyObject child) where T : DependencyObject
+        // 부모 과목 찾기 헬퍼 메소드 - 개선된 버전
+        private SubjectGroupViewModel FindParentSubject(DependencyObject child)
         {
-            DependencyObject parentObject = System.Windows.Media.VisualTreeHelper.GetParent(child);
-            if (parentObject == null) return null;
+            DependencyObject parent = System.Windows.Media.VisualTreeHelper.GetParent(child);
 
-            if (parentObject is T parent)
-                return parent;
+            while (parent != null)
+            {
+                if (parent is FrameworkElement element)
+                {
+                    // SubjectGroupViewModel 타입의 DataContext를 찾을 때까지 올라감
+                    if (element.DataContext is SubjectGroupViewModel subject)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[DragDrop] 부모 과목 찾음: {subject.SubjectName}");
+                        return subject;
+                    }
+                }
+                parent = System.Windows.Media.VisualTreeHelper.GetParent(parent);
+            }
 
-            return FindParent<T>(parentObject);
+            System.Diagnostics.Debug.WriteLine("[DragDrop] 부모 과목을 찾을 수 없음");
+            return null;
         }
 
-        // 중앙에서 좌측으로 드래그된 과목을 받아서 삭제 처리
         private void SubjectList_DragOver(object sender, DragEventArgs e)
         {
-            if (e.Data.GetDataPresent("RemoveSubjectData"))
+            if (e.Data.GetDataPresent("RemoveSubjectData") ||
+                e.Data.GetDataPresent("RemoveTopicGroupData"))
             {
                 e.Effects = DragDropEffects.Move;
             }
@@ -127,10 +143,10 @@ namespace SP.Modules.Common.Views
 
         private void SubjectList_Drop(object sender, DragEventArgs e)
         {
+            // 과목 전체 제거
             if (e.Data.GetDataPresent("RemoveSubjectData"))
             {
                 var subjectToRemove = e.Data.GetData("RemoveSubjectData") as SubjectProgressViewModel;
-
                 if (subjectToRemove != null)
                 {
                     // 공유 데이터에서 제거
@@ -142,11 +158,33 @@ namespace SP.Modules.Common.Views
                         if (existingSubject != null)
                         {
                             mainVM.SharedSubjectProgress.Remove(existingSubject);
-                            System.Diagnostics.Debug.WriteLine($"[DragDrop] 공유 데이터에서 과목 '{subjectToRemove.SubjectName}' 제거됨");
+                            System.Diagnostics.Debug.WriteLine($"[DragDrop] 과목 '{subjectToRemove.SubjectName}' 전체 제거됨 (모든 하위 TopicGroup 포함)");
 
-                            // DB에서도 제거
                             var dbHelper = DatabaseHelper.Instance;
                             dbHelper.RemoveDailySubject(DateTime.Today, subjectToRemove.SubjectName);
+                        }
+                    }
+                }
+            }
+            // TopicGroup 단독 제거 (부모 과목은 유지)
+            else if (e.Data.GetDataPresent("RemoveTopicGroupData"))
+            {
+                var topicGroupToRemove = e.Data.GetData("RemoveTopicGroupData") as TopicGroupViewModel;
+                if (topicGroupToRemove != null && Window.GetWindow(this)?.DataContext is MainViewModel mainVM)
+                {
+                    var parentSubject = mainVM.SharedSubjectProgress.FirstOrDefault(s =>
+                        string.Equals(s.SubjectName, topicGroupToRemove.ParentSubjectName, StringComparison.OrdinalIgnoreCase));
+
+                    if (parentSubject != null)
+                    {
+                        var existingTopicGroup = parentSubject.TopicGroups.FirstOrDefault(t =>
+                            string.Equals(t.GroupTitle, topicGroupToRemove.GroupTitle, StringComparison.OrdinalIgnoreCase));
+
+                        if (existingTopicGroup != null)
+                        {
+                            parentSubject.TopicGroups.Remove(existingTopicGroup);
+                            System.Diagnostics.Debug.WriteLine($"[DragDrop] TopicGroup '{topicGroupToRemove.GroupTitle}' 제거됨");
+                            System.Diagnostics.Debug.WriteLine($"[DragDrop] 부모 과목 '{parentSubject.SubjectName}' 유지됨 (TopicGroup 개수: {parentSubject.TopicGroups.Count})");
                         }
                     }
                 }

@@ -447,8 +447,42 @@ namespace SP.Modules.Common.Helpers
                 // 과목의 총 학습시간 설정 (비율 계산용)
                 topicGroup.SetSubjectTotalTime(subject.TotalStudyTime);
 
+                // 이 TopicGroup에 속한 TopicItem들 로드
+                LoadTopicItemsForGroup(conn, topicGroup, groupId);
+
                 subject.TopicGroups.Add(topicGroup);
+
+                System.Diagnostics.Debug.WriteLine($"[DB] TopicGroup '{groupName}' 로드됨, Topics 개수: {topicGroup.Topics.Count}");
             }
+        }
+        // 새로운 메소드 추가: TopicItem들을 로드
+        private void LoadTopicItemsForGroup(SQLiteConnection conn, TopicGroupViewModel topicGroup, int groupId)
+        {
+            using var itemCmd = conn.CreateCommand();
+            itemCmd.CommandText = "SELECT Id, Content, CreatedAt FROM TopicItem WHERE TopicGroupId = @groupId ORDER BY CreatedAt";
+            itemCmd.Parameters.AddWithValue("@groupId", groupId);
+
+            using var itemReader = itemCmd.ExecuteReader();
+            while (itemReader.Read())
+            {
+                var itemId = Convert.ToInt32(itemReader["Id"]);
+                var content = itemReader["Content"].ToString();
+                var createdAt = DateTime.Parse(itemReader["CreatedAt"].ToString());
+
+                var topicItem = new SP.Modules.Subjects.Models.TopicItem
+                {
+                    Id = itemId,
+                    Content = content,
+                    ParentTopicGroupName = topicGroup.GroupTitle,
+                    ParentSubjectName = topicGroup.ParentSubjectName,
+                    Progress = 0.0, // 기본값, 나중에 실제 진행률로 업데이트
+                    StudyTimeMinutes = 0 // 기본값
+                };
+
+                topicGroup.Topics.Add(topicItem);
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[DB] TopicGroup '{topicGroup.GroupTitle}'에 {topicGroup.Topics.Count}개 TopicItem 로드됨");
         }
 
         // 학습 시간 관련 메소드들 (초 단위 기준)
