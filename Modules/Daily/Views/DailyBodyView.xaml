@@ -17,6 +17,7 @@
             <RowDefinition Height="6*"/>
         </Grid.RowDefinitions>
 
+        <!-- ✅ 상단 Comment + 실제 측정 정보 영역 -->
         <Border Grid.Row="0" BorderThickness="0,0,0,2" BorderBrush="#555555">
             <Grid Height="100" Margin="20,0">
                 <Grid.ColumnDefinitions>
@@ -51,7 +52,7 @@
                                 </TextBox.InputBindings>
                             </TextBox>
 
-                            <!-- Placeholder (TextBox 위에 겹치기) - 우측 패널 메모와 동일한 방식 -->
+                            <!-- Placeholder -->
                             <TextBlock Text="comment"
                                        FontSize="18"
                                        FontWeight="Normal"
@@ -65,6 +66,7 @@
 
                 <Rectangle Grid.Column="1" Margin="10,0" Fill="#555555" Width="2" Height="80" VerticalAlignment="Center"/>
 
+                <!-- ✅ 우측 정보 - 실제 측정 시간만 표시 -->
                 <StackPanel Grid.Column="2" Orientation="Vertical" VerticalAlignment="Center">
                     <TextBlock Text="{Binding InfoTitle}" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,5"/>
                     <TextBlock Text="{Binding InfoContent}" FontSize="32" FontWeight="Bold" HorizontalAlignment="Center"/>
@@ -72,6 +74,7 @@
             </Grid>
         </Border>
 
+        <!-- ✅ 하단 과목 진행률 + Todo 리스트 영역 -->
         <Grid Grid.Row="1" Margin="0,10">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
@@ -79,6 +82,7 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
+            <!-- ✅ 실제 측정된 시간 기반 과목 진행률 표시 -->
             <common:SubjectProgressListView Grid.Row="0" 
                                             Subjects="{Binding Subjects}" 
                                             DataContext="{Binding}"
@@ -86,7 +90,7 @@
 
             <Border Background="#555555" Height="2" VerticalAlignment="Bottom" Margin="0,0,0,0"/>
 
-            <!-- TodoList를 직접 여기에 구현 -->
+            <!-- TodoList 영역 -->
             <Grid Grid.Row="1" Margin="20,0">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="300">
                     <ItemsControl ItemsSource="{Binding TodoList}">
@@ -115,7 +119,7 @@
                                             </Style>
                                         </TextBlock.Style>
 
-                                        <!-- 삭제 메뉴 - x:Name으로 직접 참조 -->
+                                        <!-- 삭제 메뉴 -->
                                         <TextBlock.ContextMenu>
                                             <ContextMenu>
                                                 <MenuItem Header="삭제"
@@ -132,6 +136,7 @@
                 </ScrollViewer>
             </Grid>
 
+            <!-- Todo 추가 영역 -->
             <Grid Grid.Row="2" Margin="0,10,0,0" Height="60">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*"/>

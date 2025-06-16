@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.ObjectModel;
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -7,7 +8,6 @@ using System.Windows.Input;
 using SP.Modules.Common.Helpers;
 using SP.Modules.Common.ViewModels;
 using SP.Modules.Daily.ViewModels;
-using SP.Modules.Daily.Views;
 using SP.Modules.Subjects.ViewModels;
 using SP.ViewModels;
 
@@ -32,60 +32,7 @@ namespace SP.Modules.Common.Views
         public static readonly DependencyProperty SubjectsProperty =
             DependencyProperty.Register("Subjects", typeof(ObservableCollection<SubjectProgressViewModel>), typeof(SubjectProgressListView), new PropertyMetadata(null));
 
-        // 🆕 삭제 버튼 클릭 이벤트
-        private void RemoveSubject_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is Button button && button.Tag is SubjectProgressViewModel subjectToRemove)
-            {
-                try
-                {
-                    // 현재 바인딩된 컬렉션에서 제거
-                    if (DataContext is LeftSidebarViewModel sidebarVM)
-                    {
-                        // 공유 데이터가 있으면 그것에서 제거
-                        if (sidebarVM.SharedSubjectProgress != null)
-                        {
-                            var existingSubject = sidebarVM.SharedSubjectProgress.FirstOrDefault(s =>
-                                string.Equals(s.SubjectName, subjectToRemove.SubjectName, StringComparison.OrdinalIgnoreCase));
-
-                            if (existingSubject != null)
-                            {
-                                sidebarVM.SharedSubjectProgress.Remove(existingSubject);
-                                System.Diagnostics.Debug.WriteLine($"[SubjectProgressListView] 공유 데이터에서 과목 '{subjectToRemove.SubjectName}' 제거됨");
-                            }
-                        }
-                        // 공유 데이터가 없으면 Subjects에서 제거
-                        else if (sidebarVM.Subjects != null)
-                        {
-                            // LeftSidebarViewModel의 Subjects는 SubjectGroupViewModel 타입이므로 별도 처리 필요
-                            System.Diagnostics.Debug.WriteLine($"[SubjectProgressListView] 기본 Subjects는 다른 타입이므로 제거하지 않음");
-                        }
-                    }
-                    // DailyBodyViewModel에서 직접 접근하는 경우
-                    else if (DataContext is DailyBodyViewModel dailyVM)
-                    {
-                        var existingSubject = dailyVM.Subjects.FirstOrDefault(s =>
-                            string.Equals(s.SubjectName, subjectToRemove.SubjectName, StringComparison.OrdinalIgnoreCase));
-
-                        if (existingSubject != null)
-                        {
-                            dailyVM.Subjects.Remove(existingSubject);
-                            System.Diagnostics.Debug.WriteLine($"[SubjectProgressListView] DailyVM에서 과목 '{subjectToRemove.SubjectName}' 제거됨");
-                        }
-                    }
-
-                    // DB에서도 제거 (오늘 할 일에서만)
-                    var dbHelper = DatabaseHelper.Instance;
-                    dbHelper.RemoveDailySubject(DateTime.Today, subjectToRemove.SubjectName);
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[SubjectProgressListView] 과목 제거 오류: {ex.Message}");
-                }
-            }
-        }
-
-        // 중앙에서 좌측으로 드래그하기 위한 이벤트
+        // 과목명 드래그 이벤트 (삭제용)
         private void SubjectName_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             _startPoint = e.GetPosition(null);
@@ -99,8 +46,8 @@ namespace SP.Modules.Common.Views
                 Point mousePos = e.GetPosition(null);
                 Vector diff = _startPoint - mousePos;
 
-                if (System.Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance ||
-                    System.Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance)
+                if (Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance ||
+                    Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance)
                 {
                     _isDragging = true;
 
@@ -111,6 +58,7 @@ namespace SP.Modules.Common.Views
                     {
                         var dragData = new DataObject("RemoveSubjectData", subject);
                         DragDrop.DoDragDrop(textBlock, dragData, DragDropEffects.Move);
+                        System.Diagnostics.Debug.WriteLine($"[DragDrop] 과목 '{subject.SubjectName}' 삭제 드래그 시작");
                     }
 
                     _isDragging = false;
@@ -118,29 +66,86 @@ namespace SP.Modules.Common.Views
             }
         }
 
+        // TopicGroup 드래그 이벤트 (삭제용)
+        private void TopicGroup_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            _startPoint = e.GetPosition(null);
+            _isDragging = false;
+        }
+
+        private void TopicGroup_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.LeftButton == MouseButtonState.Pressed && !_isDragging)
+            {
+                Point mousePos = e.GetPosition(null);
+                Vector diff = _startPoint - mousePos;
+
+                if (Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance ||
+                    Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance)
+                {
+                    _isDragging = true;
+
+                    var grid = sender as Grid;
+                    var topicGroup = grid?.DataContext as TopicGroupViewModel;
+
+                    if (topicGroup != null)
+                    {
+                        // 부모 과목명 찾기
+                        var parentSubject = FindParentSubject(grid);
+                        if (parentSubject != null)
+                        {
+                            topicGroup.ParentSubjectName = parentSubject.SubjectName;
+                        }
+
+                        var dragData = new DataObject("RemoveTopicGroupData", topicGroup);
+                        DragDrop.DoDragDrop(grid, dragData, DragDropEffects.Move);
+                        System.Diagnostics.Debug.WriteLine($"[DragDrop] TopicGroup '{topicGroup.GroupTitle}' 삭제 드래그 시작 (부모: {topicGroup.ParentSubjectName})");
+                    }
+
+                    _isDragging = false;
+                }
+            }
+        }
+
+        // 부모 과목 찾기 헬퍼 메소드
+        private SubjectProgressViewModel FindParentSubject(DependencyObject child)
+        {
+            DependencyObject parent = System.Windows.Media.VisualTreeHelper.GetParent(child);
+
+            while (parent != null)
+            {
+                if (parent is FrameworkElement element && element.DataContext is SubjectProgressViewModel subject)
+                {
+                    return subject;
+                }
+                parent = System.Windows.Media.VisualTreeHelper.GetParent(parent);
+            }
+            return null;
+        }
+
         private void SubjectProgressListView_DragOver(object sender, DragEventArgs e)
         {
-            if (e.Data.GetDataPresent("SubjectData") || e.Data.GetDataPresent("RemoveSubjectData"))
+            if (e.Data.GetDataPresent("SubjectData") ||
+                e.Data.GetDataPresent("TopicData") ||
+                e.Data.GetDataPresent("RemoveSubjectData") ||
+                e.Data.GetDataPresent("RemoveTopicGroupData"))
             {
                 e.Effects = DragDropEffects.Copy;
-                DropTargetBorder.Tag = "DragOver";
             }
             else
             {
                 e.Effects = DragDropEffects.None;
-                DropTargetBorder.Tag = null;
             }
             e.Handled = true;
         }
 
         private void SubjectProgressListView_Drop(object sender, DragEventArgs e)
         {
-            DropTargetBorder.Tag = null;
             System.Diagnostics.Debug.WriteLine("[DragDrop] Drop 이벤트 발생");
 
             try
             {
-                // 🆕 공유 데이터 소스 찾기
+                // 공유 데이터 소스 찾기
                 ObservableCollection<SubjectProgressViewModel> targetCollection = null;
 
                 if (DataContext is LeftSidebarViewModel sidebarVM && sidebarVM.SharedSubjectProgress != null)
@@ -158,95 +163,25 @@ namespace SP.Modules.Common.Views
                     return;
                 }
 
-                // 🆕 제거 데이터 처리 (다른 곳에서 드래그해서 여기로 가져와 제거)
+                // 과목 제거 처리
                 if (e.Data.GetDataPresent("RemoveSubjectData"))
                 {
-                    var subjectToRemove = e.Data.GetData("RemoveSubjectData") as SubjectProgressViewModel;
-
-                    if (subjectToRemove != null)
-                    {
-                        var existingSubject = targetCollection.FirstOrDefault(s =>
-                            string.Equals(s.SubjectName, subjectToRemove.SubjectName, StringComparison.OrdinalIgnoreCase));
-
-                        if (existingSubject != null)
-                        {
-                            targetCollection.Remove(existingSubject);
-                            System.Diagnostics.Debug.WriteLine($"[DragDrop] 드래그로 과목 '{subjectToRemove.SubjectName}' 제거됨");
-
-                            // DB에서도 제거
-                            var dbHelper = DatabaseHelper.Instance;
-                            dbHelper.RemoveDailySubject(DateTime.Today, subjectToRemove.SubjectName);
-                        }
-                    }
+                    HandleRemoveSubject(e, targetCollection);
                 }
-                // 추가 데이터 처리 (좌측에서 드래그해서 추가)
+                // TopicGroup 제거 처리
+                else if (e.Data.GetDataPresent("RemoveTopicGroupData"))
+                {
+                    HandleRemoveTopicGroup(e, targetCollection);
+                }
+                // 과목 추가 처리
                 else if (e.Data.GetDataPresent("SubjectData"))
                 {
-                    var droppedSubject = e.Data.GetData("SubjectData") as SubjectGroupViewModel;
-                    System.Diagnostics.Debug.WriteLine($"[DragDrop] 드롭된 과목: {droppedSubject?.SubjectName}");
-
-                    if (droppedSubject != null)
-                    {
-                        // 중복 체크
-                        var existingSubject = targetCollection.FirstOrDefault(s =>
-                            string.Equals(s.SubjectName, droppedSubject.SubjectName, StringComparison.OrdinalIgnoreCase));
-
-                        if (existingSubject == null)
-                        {
-                            var newSubjectProgress = new SubjectProgressViewModel
-                            {
-                                SubjectName = droppedSubject.SubjectName,
-                                Progress = 0.0,
-                                StudyTimeMinutes = 0
-                            };
-
-                            targetCollection.Add(newSubjectProgress);
-                            System.Diagnostics.Debug.WriteLine($"[DragDrop] 과목 '{droppedSubject.SubjectName}' 추가됨");
-                        }
-                        else
-                        {
-                            System.Diagnostics.Debug.WriteLine($"[DragDrop] 과목 '{droppedSubject.SubjectName}' 이미 존재함");
-                        }
-                    }
+                    HandleAddSingleSubject(e, targetCollection);
                 }
+                // TopicGroup 추가 처리
                 else if (e.Data.GetDataPresent("TopicData"))
                 {
-                    var droppedTopic = e.Data.GetData("TopicData") as TopicGroupViewModel;
-                    System.Diagnostics.Debug.WriteLine($"[DragDrop] 드롭된 분류: {droppedTopic?.GroupTitle} (부모: {droppedTopic?.ParentSubjectName})");
-
-                    if (droppedTopic != null && !string.IsNullOrEmpty(droppedTopic.ParentSubjectName))
-                    {
-                        // 부모 과목이 이미 있는지 확인
-                        var existingSubject = targetCollection.FirstOrDefault(s =>
-                            string.Equals(s.SubjectName, droppedTopic.ParentSubjectName, StringComparison.OrdinalIgnoreCase));
-
-                        if (existingSubject != null)
-                        {
-                            // 기존 과목에 분류 추가
-                            var existingTopic = existingSubject.TopicGroups.FirstOrDefault(t =>
-                                string.Equals(t.GroupTitle, droppedTopic.GroupTitle, StringComparison.OrdinalIgnoreCase));
-
-                            if (existingTopic == null)
-                            {
-                                existingSubject.TopicGroups.Add(droppedTopic);
-                                System.Diagnostics.Debug.WriteLine($"[DragDrop] 기존 과목 '{droppedTopic.ParentSubjectName}'에 분류 '{droppedTopic.GroupTitle}' 추가됨");
-                            }
-                        }
-                        else
-                        {
-                            // 새 과목과 분류 함께 추가
-                            var newSubjectProgress = new SubjectProgressViewModel
-                            {
-                                SubjectName = droppedTopic.ParentSubjectName,
-                                Progress = 0.0,
-                                StudyTimeMinutes = 0
-                            };
-                            newSubjectProgress.TopicGroups.Add(droppedTopic);
-
-                            targetCollection.Add(newSubjectProgress);
-                            System.Diagnostics.Debug.WriteLine($"[DragDrop] 분류와 함께 과목 '{droppedTopic.ParentSubjectName}' 추가됨");
-                        }
-                    }
+                    HandleAddSingleTopicGroup(e, targetCollection);
                 }
             }
             catch (Exception ex)
@@ -255,6 +190,152 @@ namespace SP.Modules.Common.Views
             }
 
             e.Handled = true;
+        }
+
+        // ✅ 과목 제거 - 단순화 (DailySubject에서만 제거, 실제 시간은 StudySession에 보존)
+        private void HandleRemoveSubject(DragEventArgs e, ObservableCollection<SubjectProgressViewModel> targetCollection)
+        {
+            var subjectToRemove = e.Data.GetData("RemoveSubjectData") as SubjectProgressViewModel;
+
+            if (subjectToRemove != null)
+            {
+                var existingSubject = targetCollection.FirstOrDefault(s =>
+                    string.Equals(s.SubjectName, subjectToRemove.SubjectName, StringComparison.OrdinalIgnoreCase));
+
+                if (existingSubject != null)
+                {
+                    var subjectName = existingSubject.SubjectName;
+
+                    // ✅ 1단계: UI 컬렉션에서 제거
+                    targetCollection.Remove(existingSubject);
+
+                    // ✅ 2단계: DailySubject에서만 제거 (실제 시간은 StudySession에 보존됨)
+                    var dbHelper = DatabaseHelper.Instance;
+                    dbHelper.RemoveDailySubject(DateTime.Today, subjectName);
+
+                    System.Diagnostics.Debug.WriteLine($"[DragDrop] 과목 '{subjectName}' 오늘 할 일에서 제거 (실제 시간은 StudySession에 보존)");
+                }
+            }
+        }
+
+        // ✅ TopicGroup 제거 - 단순화 
+        private void HandleRemoveTopicGroup(DragEventArgs e, ObservableCollection<SubjectProgressViewModel> targetCollection)
+        {
+            var topicGroupToRemove = e.Data.GetData("RemoveTopicGroupData") as TopicGroupViewModel;
+
+            if (topicGroupToRemove != null && !string.IsNullOrEmpty(topicGroupToRemove.ParentSubjectName))
+            {
+                var parentSubject = targetCollection.FirstOrDefault(s =>
+                    string.Equals(s.SubjectName, topicGroupToRemove.ParentSubjectName, StringComparison.OrdinalIgnoreCase));
+
+                if (parentSubject != null)
+                {
+                    var existingTopicGroup = parentSubject.TopicGroups.FirstOrDefault(t =>
+                        string.Equals(t.GroupTitle, topicGroupToRemove.GroupTitle, StringComparison.OrdinalIgnoreCase));
+
+                    if (existingTopicGroup != null)
+                    {
+                        // ✅ UI에서 제거 (실제 시간은 StudySession에 보존됨)
+                        parentSubject.TopicGroups.Remove(existingTopicGroup);
+
+                        System.Diagnostics.Debug.WriteLine($"[DragDrop] TopicGroup '{existingTopicGroup.GroupTitle}' 제거됨 (실제 시간은 보존)");
+                        System.Diagnostics.Debug.WriteLine($"[DragDrop] 부모 과목 '{parentSubject.SubjectName}' 유지됨 (TopicGroup 개수: {parentSubject.TopicGroups.Count})");
+                    }
+                }
+            }
+        }
+
+        // ✅ 과목 추가 - 단순화 (실제 시간은 자동으로 StudySession에서 조회됨)
+        private void HandleAddSingleSubject(DragEventArgs e, ObservableCollection<SubjectProgressViewModel> targetCollection)
+        {
+            var droppedSubject = e.Data.GetData("SubjectData") as SubjectGroupViewModel;
+            System.Diagnostics.Debug.WriteLine($"[DragDrop] 드롭된 과목: {droppedSubject?.SubjectName}");
+
+            if (droppedSubject != null)
+            {
+                var existingSubject = targetCollection.FirstOrDefault(s =>
+                    string.Equals(s.SubjectName, droppedSubject.SubjectName, StringComparison.OrdinalIgnoreCase));
+
+                if (existingSubject == null)
+                {
+                    // ✅ 새 과목 생성 (시간은 TodayStudyTimeSeconds에서 자동 조회)
+                    var newSubjectProgress = new SubjectProgressViewModel
+                    {
+                        SubjectName = droppedSubject.SubjectName
+                    };
+
+                    targetCollection.Add(newSubjectProgress);
+                    System.Diagnostics.Debug.WriteLine($"[DragDrop] 과목 '{droppedSubject.SubjectName}' 추가됨 (시간 자동 조회: {newSubjectProgress.TodayStudyTimeSeconds}초)");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"[DragDrop] 과목 '{droppedSubject.SubjectName}' 이미 존재함");
+                }
+            }
+        }
+
+        // ✅ TopicGroup 추가 - 단순화
+        private void HandleAddSingleTopicGroup(DragEventArgs e, ObservableCollection<SubjectProgressViewModel> targetCollection)
+        {
+            var droppedTopic = e.Data.GetData("TopicData") as TopicGroupViewModel;
+            var parentSubjectName = e.Data.GetData("ParentSubjectName") as string;
+
+            System.Diagnostics.Debug.WriteLine($"[DragDrop] 드롭된 분류: {droppedTopic?.GroupTitle}");
+            System.Diagnostics.Debug.WriteLine($"[DragDrop] 부모 과목명: {parentSubjectName ?? droppedTopic?.ParentSubjectName}");
+
+            if (droppedTopic != null)
+            {
+                var effectiveParentName = parentSubjectName ?? droppedTopic.ParentSubjectName;
+
+                if (!string.IsNullOrEmpty(effectiveParentName))
+                {
+                    var existingSubject = targetCollection.FirstOrDefault(s =>
+                        string.Equals(s.SubjectName, effectiveParentName, StringComparison.OrdinalIgnoreCase));
+
+                    if (existingSubject != null)
+                    {
+                        // 기존 과목에 TopicGroup 추가
+                        var existingTopic = existingSubject.TopicGroups.FirstOrDefault(t =>
+                            string.Equals(t.GroupTitle, droppedTopic.GroupTitle, StringComparison.OrdinalIgnoreCase));
+
+                        if (existingTopic == null)
+                        {
+                            var newTopicGroup = new TopicGroupViewModel
+                            {
+                                GroupTitle = droppedTopic.GroupTitle,
+                                ParentSubjectName = effectiveParentName,
+                                Topics = new ObservableCollection<SP.Modules.Subjects.Models.TopicItem>()
+                            };
+
+                            newTopicGroup.SetParentTodayStudyTime(existingSubject.TodayStudyTimeSeconds);
+                            existingSubject.TopicGroups.Add(newTopicGroup);
+
+                            System.Diagnostics.Debug.WriteLine($"[DragDrop] 기존 과목 '{effectiveParentName}'에 TopicGroup '{droppedTopic.GroupTitle}' 추가됨");
+                        }
+                    }
+                    else
+                    {
+                        // 새 과목과 TopicGroup 함께 추가
+                        var newSubjectProgress = new SubjectProgressViewModel
+                        {
+                            SubjectName = effectiveParentName
+                        };
+
+                        var newTopicGroup = new TopicGroupViewModel
+                        {
+                            GroupTitle = droppedTopic.GroupTitle,
+                            ParentSubjectName = effectiveParentName,
+                            Topics = new ObservableCollection<SP.Modules.Subjects.Models.TopicItem>()
+                        };
+
+                        newTopicGroup.SetParentTodayStudyTime(newSubjectProgress.TodayStudyTimeSeconds);
+                        newSubjectProgress.TopicGroups.Add(newTopicGroup);
+                        targetCollection.Add(newSubjectProgress);
+
+                        System.Diagnostics.Debug.WriteLine($"[DragDrop] 새 과목 '{effectiveParentName}'과 TopicGroup '{droppedTopic.GroupTitle}' 추가됨");
+                    }
+                }
+            }
         }
     }
 }

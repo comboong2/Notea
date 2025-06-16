@@ -2,6 +2,7 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Windows.Input;
 using SP.Modules.Common.Helpers;
 using SP.Modules.Daily.Models;
@@ -65,8 +66,10 @@ namespace SP.Modules.Daily.ViewModels
         public ICommand StartAddCommand { get; }
         public ICommand DeleteTodoCommand { get; }
 
-        // 무한 루프 방지 플래그
+        // 🆕 무한 루프 방지를 위한 강화된 플래그들
         private bool _isLoadingSubjects = false;
+        private bool _isLoadingFromDatabase = false;
+        private bool _hasLoadedOnce = false; // 초기 로드 완료 플래그
 
         public DailyBodyViewModel(DateTime appStartDate)
         {
@@ -88,19 +91,55 @@ namespace SP.Modules.Daily.ViewModels
             LoadDailyData(SelectedDate);
         }
 
-        // 공유 데이터 설정 메소드
+        // 공유 데이터 설정 메소드 - 수정됨
         public void SetSharedSubjects(ObservableCollection<SubjectProgressViewModel> sharedSubjects)
         {
-            Subjects = sharedSubjects;
-            System.Diagnostics.Debug.WriteLine("[DailyBodyViewModel] 공유 데이터로 전환됨");
+            // 🆕 로딩 플래그 설정으로 이벤트 차단
+            _isLoadingFromDatabase = true;
+
+            try
+            {
+                // 기존 데이터를 새로운 공유 컬렉션으로 이동
+                if (Subjects != null && Subjects.Count > 0)
+                {
+                    var existingData = Subjects.ToList();
+                    foreach (var item in existingData)
+                    {
+                        if (!sharedSubjects.Any(s => string.Equals(s.SubjectName, item.SubjectName, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            sharedSubjects.Add(item);
+                        }
+                    }
+                }
+
+                Subjects = sharedSubjects;
+                System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 공유 데이터로 전환됨: {Subjects.Count}개 항목");
+
+                // 🆕 공유 데이터로 전환한 후에만 한 번 로드
+                if (!_hasLoadedOnce)
+                {
+                    LoadDailySubjects(SelectedDate);
+                    _hasLoadedOnce = true;
+                }
+            }
+            finally
+            {
+                _isLoadingFromDatabase = false;
+            }
         }
 
         private void Subjects_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
         {
-            // 무한 루프 방지를 위한 플래그 체크
-            if (_isLoadingSubjects) return;
+            if (_isLoadingSubjects || _isLoadingFromDatabase)
+            {
+                return;
+            }
 
-            SaveDailySubjects();
+            // Add 액션일 때만 저장
+            if (e.Action == NotifyCollectionChangedAction.Add)
+            {
+                SaveDailySubjects();
+            }
         }
 
         private void AddTodo()
@@ -160,7 +199,7 @@ namespace SP.Modules.Daily.ViewModels
             DeleteTodo(todo);
         }
 
-        // 헤더 하단의 comment, d-day 관련
+        // 헤더 하단의 comment 관련
         private string _comment = string.Empty;
         public string Comment
         {
@@ -176,8 +215,8 @@ namespace SP.Modules.Daily.ViewModels
 
         public void LoadDailyData(DateTime date)
         {
-            // 같은 날짜면 다시 로딩하지 않음 (중복 방지)
-            if (SelectedDate.Date == date.Date && Subjects.Count > 0)
+            // 🆕 같은 날짜에 대한 중복 로딩 방지
+            if (SelectedDate.Date == date.Date && _hasLoadedOnce)
             {
                 System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 같은 날짜 데이터 이미 로드됨. 스킵.");
                 return;
@@ -211,63 +250,141 @@ namespace SP.Modules.Daily.ViewModels
             }
             System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] TodoList에 {TodoList.Count}개 항목 추가됨.");
 
-            // 오늘 할 일 과목 리스트 불러오기
-            LoadDailySubjects(date);
+            // 오늘 할 일 과목 리스트 불러오기 (한 번만)
+            if (!_hasLoadedOnce)
+            {
+                LoadDailySubjects(date);
+                _hasLoadedOnce = true;
+            }
         }
 
         private void LoadDailySubjects(DateTime date)
         {
-            _isLoadingSubjects = true; // 무한 루프 방지 플래그 설정
+            if (_isLoadingSubjects)
+            {
+                System.Diagnostics.Debug.WriteLine("[DailyBodyViewModel] 이미 로딩 중이므로 스킵됨");
+                return;
+            }
+
+            _isLoadingSubjects = true;
+            System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] LoadDailySubjects 시작 - 날짜: {date:yyyy-MM-dd}");
 
             try
             {
-                var dailySubjects = _db.GetDailySubjects(date);
+                // ⭐ 1단계: DB 중복 데이터 정리 (임시)
+                _db.CleanupDuplicateData(date);
 
-                // 기존 데이터와 비교하여 중복 방지
-                var existingSubjects = Subjects.ToList();
+                // ⭐ 2단계: 모든 이벤트 차단
+                Subjects.CollectionChanged -= Subjects_CollectionChanged;
+
+                // ✅ 3단계: 오늘 총 공부시간 계산 및 설정
+                int todayTotalSeconds = _db.GetTotalStudyTimeSeconds(date);
+                SubjectProgressViewModel.SetTodayTotalStudyTime(todayTotalSeconds);
+                System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 오늘 총 공부시간 설정: {todayTotalSeconds}초");
+
+                // 4단계: 데이터 로드
+                var dailySubjectsWithGroups = _db.GetDailySubjectsWithTopicGroups(date);
+                System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] DB에서 {dailySubjectsWithGroups.Count}개 DailySubject 로드됨");
+
+                // ⭐ 5단계: 기존 데이터 완전 초기화
+                foreach (var subject in Subjects.ToList())
+                {
+                    subject.TopicGroups.CollectionChanged -= null; // 모든 이벤트 해제
+                }
                 Subjects.Clear();
 
-                foreach (var (subjectName, progress, studyTimeMinutes) in dailySubjects)
+                // 6단계: 새 데이터로 채우기 (실제 측정된 시간만)
+                var processedSubjects = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var (subjectName, progress, studyTimeSeconds, topicGroupsData) in dailySubjectsWithGroups)
                 {
-                    // 중복 체크: 같은 이름의 과목이 이미 있는지 확인
-                    if (!existingSubjects.Any(s => s.SubjectName.Equals(subjectName, StringComparison.OrdinalIgnoreCase)))
+                    // 중복 체크
+                    if (processedSubjects.Contains(subjectName))
                     {
-                        Subjects.Add(new SubjectProgressViewModel
-                        {
-                            SubjectName = subjectName,
-                            Progress = progress,
-                            StudyTimeMinutes = studyTimeMinutes
-                        });
+                        System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 중복 과목 스킵: {subjectName}");
+                        continue;
                     }
-                    else
+                    processedSubjects.Add(subjectName);
+
+                    // ✅ 새 SubjectProgressViewModel 생성 (실제 측정 시간만)
+                    var newSubject = new SubjectProgressViewModel
                     {
-                        // 기존 항목이 있으면 업데이트만
-                        var existing = existingSubjects.FirstOrDefault(s =>
-                            s.SubjectName.Equals(subjectName, StringComparison.OrdinalIgnoreCase));
-                        if (existing != null)
+                        SubjectName = subjectName,
+                        TodayStudyTimeSeconds = studyTimeSeconds // ✅ 실제 측정된 시간만
+                    };
+
+                    // TopicGroups 생성 (이벤트 없이)
+                    var restoredTopicGroups = new ObservableCollection<TopicGroupViewModel>();
+                    foreach (var groupData in topicGroupsData)
+                    {
+                        var topicGroup = new TopicGroupViewModel
                         {
-                            existing.Progress = progress;
-                            existing.StudyTimeMinutes = studyTimeMinutes;
-                            Subjects.Add(existing);
+                            GroupTitle = groupData.GroupTitle,
+                            TodayStudyTimeSeconds = groupData.TotalStudyTimeSeconds, // ✅ 실제 측정된 시간
+                            IsCompleted = groupData.IsCompleted,
+                            ParentSubjectName = subjectName,
+                            Topics = new ObservableCollection<SP.Modules.Subjects.Models.TopicItem>()
+                        };
+
+                        topicGroup.SetParentTodayStudyTime(studyTimeSeconds);
+
+                        // Topics 추가
+                        foreach (var topicData in groupData.Topics)
+                        {
+                            topicGroup.Topics.Add(new SP.Modules.Subjects.Models.TopicItem
+                            {
+                                Name = topicData.Name,
+                                Progress = topicData.Progress,
+                                StudyTimeSeconds = topicData.StudyTimeSeconds, // ✅ 실제 측정된 시간
+                                IsCompleted = topicData.IsCompleted,
+                                ParentTopicGroupName = groupData.GroupTitle,
+                                ParentSubjectName = subjectName
+                            });
+                        }
+
+                        restoredTopicGroups.Add(topicGroup);
+                    }
+
+                    // ⭐ 완전히 새로운 방식: 직접 할당
+                    newSubject._isUpdatingFromDatabase = true; // 직접 플래그 설정
+                    try
+                    {
+                        foreach (var group in restoredTopicGroups)
+                        {
+                            newSubject.TopicGroups.Add(group);
                         }
                     }
+                    finally
+                    {
+                        newSubject._isUpdatingFromDatabase = false;
+                    }
+
+                    Subjects.Add(newSubject);
+                    System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 과목 추가됨: {subjectName} ({topicGroupsData.Count}개 그룹, {studyTimeSeconds}초)");
                 }
 
-                System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 오늘 할 일 과목 {Subjects.Count}개 로드됨 (중복 제거됨)");
+                System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 최종 과목 수: {Subjects.Count}개");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 오늘 할 일 과목 로드 오류: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] LoadDailySubjects 오류: {ex.Message}");
             }
             finally
             {
-                _isLoadingSubjects = false; // 플래그 해제
+                // ⭐ 7단계: 이벤트 재연결
+                Subjects.CollectionChanged += Subjects_CollectionChanged;
+                _isLoadingSubjects = false;
+                System.Diagnostics.Debug.WriteLine("[DailyBodyViewModel] LoadDailySubjects 완료");
             }
         }
 
         private void SaveDailySubjects()
         {
-            if (_isLoadingSubjects) return; // 로딩 중이면 저장하지 않음
+            if (_isLoadingSubjects || _isLoadingFromDatabase)
+            {
+                System.Diagnostics.Debug.WriteLine("[DailyBodyViewModel] SaveDailySubjects 스킵됨 (로딩 중)");
+                return; // 로딩 중이면 저장하지 않음
+            }
 
             try
             {
@@ -277,29 +394,17 @@ namespace SP.Modules.Daily.ViewModels
                     .Select(g => g.First())
                     .ToList();
 
-                // 기존 데이터를 모두 삭제하고 새로 저장 (깔끔한 방법)
+                // 🆕 일괄 저장 방식으로 중복 저장 방지
                 _db.RemoveAllDailySubjects(SelectedDate);
 
-                // 중복 제거된 과목들을 새로 저장
                 for (int i = 0; i < uniqueSubjects.Count; i++)
                 {
                     var subject = uniqueSubjects[i];
-                    _db.SaveDailySubject(SelectedDate, subject.SubjectName, subject.Progress, subject.StudyTimeMinutes, i);
+                    // ✅ 실제 측정된 진행률로 저장
+                    _db.SaveDailySubjectWithTopicGroups(SelectedDate, subject.SubjectName, subject.ActualProgress, subject.TodayStudyTimeSeconds, i, subject.TopicGroups);
                 }
 
-                // UI의 Subjects도 중복 제거된 것으로 업데이트
-                if (uniqueSubjects.Count != Subjects.Count)
-                {
-                    _isLoadingSubjects = true; // 무한 루프 방지
-                    Subjects.Clear();
-                    foreach (var subject in uniqueSubjects)
-                    {
-                        Subjects.Add(subject);
-                    }
-                    _isLoadingSubjects = false;
-                }
-
-                System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 오늘 할 일 과목 저장 완료: {uniqueSubjects.Count}개 (중복 제거됨)");
+                System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 오늘 할 일 과목과 TopicGroups 일괄 저장 완료: {uniqueSubjects.Count}개");
             }
             catch (Exception ex)
             {
@@ -325,20 +430,17 @@ namespace SP.Modules.Daily.ViewModels
             {
                 System.Diagnostics.Debug.WriteLine($"[DailyBodyViewModel] 중복 과목 무시: {subject.SubjectName} (이미 존재함)");
 
-                // 기존 과목의 진행률이나 학습시간 업데이트가 필요한 경우
-                if (existingSubject.Progress < subject.Progress)
+                // ✅ 기존 과목의 실제 측정 시간 업데이트
+                if (existingSubject.TodayStudyTimeSeconds < subject.TodayStudyTimeSeconds)
                 {
-                    existingSubject.Progress = subject.Progress;
-                }
-                if (existingSubject.StudyTimeMinutes < subject.StudyTimeMinutes)
-                {
-                    existingSubject.StudyTimeMinutes = subject.StudyTimeMinutes;
+                    existingSubject.TodayStudyTimeSeconds = subject.TodayStudyTimeSeconds;
                 }
             }
         }
 
-        public string InfoTitle => IsToday ? "시험" : "총 학습 시간";
-        public string InfoContent => IsToday ? $"D-{Dday}" : TotalStudyTime;
+        // ✅ 우측 정보 영역 - 목표 관련 제거, 순수 측정 정보만
+        public string InfoTitle => IsToday ? "학습 시간" : "총 학습 시간";
+        public string InfoContent => IsToday ? TodayStudyTime : AllTimeStudyTime;
 
         public bool IsToday => SelectedDate.Date == DateTime.Today;
 
@@ -352,21 +454,37 @@ namespace SP.Modules.Daily.ViewModels
                 {
                     // 날짜가 바뀌면 Comment를 다시 불러오고, 할 일도 갱신하도록 처리
                     Comment = _db.GetCommentByDate(value);
+
+                    // 날짜 변경 시 InfoTitle과 InfoContent도 업데이트
+                    OnPropertyChanged(nameof(InfoTitle));
+                    OnPropertyChanged(nameof(InfoContent));
+                    OnPropertyChanged(nameof(TodayStudyTime));
+                    OnPropertyChanged(nameof(AllTimeStudyTime));
+
+                    // 🆕 날짜 변경 시 로드 플래그 리셋
+                    _hasLoadedOnce = false;
                 }
             }
         }
 
-        public TimeSpan StudyTime { get; set; } = TimeSpan.FromMinutes(165);
-        public int Dday => (TargetDate - DateTime.Today).Days;
-        public DateTime TargetDate { get; set; } = new DateTime(2025, 6, 22);
+        // ✅ 오늘의 실제 측정된 총 학습시간
+        public string TodayStudyTime
+        {
+            get
+            {
+                int totalSeconds = _db.GetTotalStudyTimeSeconds(SelectedDate);
+                var totalTime = TimeSpan.FromSeconds(totalSeconds);
+                return $"{(int)totalTime.TotalHours:D2}:{totalTime.Minutes:D2}:{totalTime.Seconds:D2}";
+            }
+        }
 
-        // 실제 DB에서 총 학습시간 계산
-        public string TotalStudyTime
+        // ✅ 전체 누적 학습시간
+        public string AllTimeStudyTime
         {
             get
             {
                 int totalSeconds = _db.GetTotalStudyTimeSeconds();
-                TimeSpan totalTime = TimeSpan.FromSeconds(totalSeconds);
+                var totalTime = TimeSpan.FromSeconds(totalSeconds);
                 return $"{(int)totalTime.TotalHours}시간 {totalTime.Minutes}분";
             }
         }

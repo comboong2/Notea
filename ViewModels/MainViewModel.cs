@@ -28,7 +28,7 @@ namespace SP.ViewModels
         private readonly SubjectListPageHeaderView _subjectHeaderView;
         private readonly SubjectListPageBodyView _subjectBodyView;
 
-        // 🆕 공유 데이터 소스 - 두 페이지에서 모두 사용
+        // 🆕 공유 데이터 소스 - 두 페이지에서 모두 사용 (실제 측정 시간만)
         public ObservableCollection<SubjectProgressViewModel> SharedSubjectProgress { get; set; }
 
         private LeftSidebarViewModel _sidebarViewModel;
@@ -98,7 +98,7 @@ namespace SP.ViewModels
 
         public MainViewModel()
         {
-            // 🆕 공유 데이터 소스 초기화
+            // 🆕 공유 데이터 소스 초기화 (실제 측정 시간만)
             SharedSubjectProgress = new ObservableCollection<SubjectProgressViewModel>();
 
             // 사이드바 ViewModel 초기화
@@ -132,8 +132,10 @@ namespace SP.ViewModels
                 BodyContent = _dailyBodyView;
                 SidebarViewModel.SetContext("main");
 
-                // 현재 날짜로 데이터 로드
+                // 현재 날짜로 데이터 로드 - 강제 리로드
                 _dailyBodyVM.LoadDailyData(AppStartDate);
+
+                System.Diagnostics.Debug.WriteLine($"[MainViewModel] Today 페이지로 전환 - 공유 데이터 항목 수: {SharedSubjectProgress.Count}");
             });
 
             NavigateToSubjectListCommand = new RelayCommand(() =>
@@ -149,6 +151,80 @@ namespace SP.ViewModels
 
                 System.Diagnostics.Debug.WriteLine($"[MainViewModel] 과목페이지로 전환 - 공유 데이터 항목 수: {SharedSubjectProgress.Count}");
             });
+
+            // 🆕 앱 시작 시 저장된 Daily Subject 데이터 복원 (실제 측정 시간만)
+            RestoreDailySubjects();
+        }
+
+        // 🆕 저장된 Daily Subject 데이터 복원 메소드 (실제 측정 시간만)
+        private void RestoreDailySubjects()
+        {
+            try
+            {
+                var dbHelper = SP.Modules.Common.Helpers.DatabaseHelper.Instance;
+
+                // ✅ 오늘 총 공부시간 먼저 설정
+                int todayTotalSeconds = dbHelper.GetTotalStudyTimeSeconds(AppStartDate);
+                SubjectProgressViewModel.SetTodayTotalStudyTime(todayTotalSeconds);
+
+                var dailySubjects = dbHelper.GetDailySubjects(AppStartDate);
+
+                foreach (var (subjectName, progress, studyTimeSeconds) in dailySubjects)
+                {
+                    var existingSubject = SharedSubjectProgress.FirstOrDefault(s =>
+                        string.Equals(s.SubjectName, subjectName, StringComparison.OrdinalIgnoreCase));
+
+                    if (existingSubject == null)
+                    {
+                        // ✅ 실제 측정된 시간만으로 생성
+                        SharedSubjectProgress.Add(new SubjectProgressViewModel
+                        {
+                            SubjectName = subjectName,
+                            TodayStudyTimeSeconds = studyTimeSeconds // ✅ 실제 측정된 시간만
+                        });
+                    }
+                }
+
+                System.Diagnostics.Debug.WriteLine($"[MainViewModel] 앱 시작 시 {SharedSubjectProgress.Count}개 DailySubject 복원됨 (총 {todayTotalSeconds}초)");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MainViewModel] DailySubject 복원 오류: {ex.Message}");
+            }
+        }
+
+        // ✅ 과목페이지에서 호출될 메소드 (추후 구현) - 해당 과목의 실시간 시간 증가
+        public void OnSubjectPageEntered(string subjectName)
+        {
+            var subject = SharedSubjectProgress.FirstOrDefault(s =>
+                string.Equals(s.SubjectName, subjectName, StringComparison.OrdinalIgnoreCase));
+
+            if (subject != null)
+            {
+                // ✅ 타이머가 실행중일 때만 시간 증가 (추후 RightSidebarViewModel과 연동)
+                System.Diagnostics.Debug.WriteLine($"[MainViewModel] 과목페이지 진입: {subjectName}");
+                // subject.IncrementRealTimeStudy(); // 매초 호출될 예정
+            }
+        }
+
+        // ✅ 분류그룹에서 활동시 호출될 메소드 (추후 구현) - 해당 분류의 실시간 시간 증가
+        public void OnTopicGroupActivity(string subjectName, string groupTitle)
+        {
+            var subject = SharedSubjectProgress.FirstOrDefault(s =>
+                string.Equals(s.SubjectName, subjectName, StringComparison.OrdinalIgnoreCase));
+
+            if (subject != null)
+            {
+                var topicGroup = subject.TopicGroups.FirstOrDefault(tg =>
+                    string.Equals(tg.GroupTitle, groupTitle, StringComparison.OrdinalIgnoreCase));
+
+                if (topicGroup != null)
+                {
+                    // ✅ 타이머가 실행중일 때만 시간 증가 (추후 RightSidebarViewModel과 연동)
+                    System.Diagnostics.Debug.WriteLine($"[MainViewModel] 분류그룹 활동: {subjectName} > {groupTitle}");
+                    // topicGroup.IncrementRealTimeStudy(); // 매초 호출될 예정
+                }
+            }
         }
 
         public void OnDateSelected(DateTime date)

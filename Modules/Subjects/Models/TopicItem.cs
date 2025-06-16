@@ -22,7 +22,13 @@ namespace SP.Modules.Subjects.Models
             }
         }
 
-        private double _progress;
+        public string Content
+        {
+            get => _name;
+            set => Name = value;
+        }
+
+        private double _progress = 0.0;
         public double Progress
         {
             get => _progress;
@@ -30,7 +36,7 @@ namespace SP.Modules.Subjects.Models
             {
                 if (_progress != value)
                 {
-                    _progress = value;
+                    _progress = Math.Max(0.0, Math.Min(1.0, value));
                     OnPropertyChanged(nameof(Progress));
                     OnPropertyChanged(nameof(ProgressTooltip));
                     OnPropertyChanged(nameof(StudyTimeText));
@@ -38,49 +44,102 @@ namespace SP.Modules.Subjects.Models
             }
         }
 
-        // 학습 시간 (분 단위)
-        private int _studyTimeMinutes;
-        public int StudyTimeMinutes
+        // ✅ 메인 프로퍼티: 학습 시간 (초 단위)
+        private int _studyTimeSeconds;
+        public int StudyTimeSeconds
         {
-            get => _studyTimeMinutes;
+            get => _studyTimeSeconds;
             set
             {
-                if (_studyTimeMinutes != value)
+                if (_studyTimeSeconds != value)
                 {
-                    _studyTimeMinutes = value;
-                    OnPropertyChanged(nameof(StudyTimeMinutes));
+                    _studyTimeSeconds = value;
+                    OnPropertyChanged(nameof(StudyTimeSeconds));
+                    OnPropertyChanged(nameof(StudyTimeMinutes)); // 호환성
                     OnPropertyChanged(nameof(ProgressTooltip));
                     OnPropertyChanged(nameof(StudyTimeText));
+
+                    // 학습 시간에 따라 Progress 자동 계산 (예: 7200초(2시간) = 100%)
+                    if (_studyTimeSeconds > 0)
+                    {
+                        Progress = Math.Min(1.0, _studyTimeSeconds / 7200.0);
+                    }
                 }
             }
         }
 
-        // Progress Bar Tooltip
+        // ✅ 호환성을 위한 프로퍼티 (기존 코드들이 분 단위로 접근)
+        public int StudyTimeMinutes
+        {
+            get => StudyTimeSeconds / 60;
+            set => StudyTimeSeconds = value * 60;
+        }
+
+        private bool _isCompleted = false;
+        public bool IsCompleted
+        {
+            get => _isCompleted;
+            set
+            {
+                if (_isCompleted != value)
+                {
+                    _isCompleted = value;
+                    OnPropertyChanged(nameof(IsCompleted));
+                    SaveCheckStateToDatabase();
+                }
+            }
+        }
+
+        // 드래그 앤 드롭을 위한 부모 정보
+        public string ParentTopicGroupName { get; set; } = string.Empty;
+        public string ParentSubjectName { get; set; } = string.Empty;
+
+        // ✅ Progress Bar Tooltip - 00:00:00 형식으로 수정
         public string ProgressTooltip
         {
             get
             {
-                var hours = StudyTimeMinutes / 60;
-                var minutes = StudyTimeMinutes % 60;
-                return $"{hours:D2}:{minutes:D2}:{0:D2}"; // HH:MM:SS 형식
+                var hours = StudyTimeSeconds / 3600;
+                var minutes = (StudyTimeSeconds % 3600) / 60;
+                var seconds = StudyTimeSeconds % 60;
+                return $"{hours:D2}:{minutes:D2}:{seconds:D2}";
             }
         }
 
-        // 학습 시간 텍스트
+        // ✅ 학습 시간 텍스트 (00:00:00 형식)
         public string StudyTimeText
         {
             get
             {
-                var hours = StudyTimeMinutes / 60;
-                var minutes = StudyTimeMinutes % 60;
-                return $"{hours}시간 {minutes}분";
+                var hours = StudyTimeSeconds / 3600;
+                var minutes = (StudyTimeSeconds % 3600) / 60;
+                var seconds = StudyTimeSeconds % 60;
+                return $"{hours:D2}:{minutes:D2}:{seconds:D2}";
             }
         }
 
         public TopicItem()
         {
-            // Progress에 따라 임시 학습 시간 설정 (실제로는 DB에서 가져와야 함)
-            StudyTimeMinutes = (int)(Progress * 120);
+            Progress = 0.0;
+            StudyTimeSeconds = 0; // ✅ 초단위로 초기화
+            IsCompleted = false;
+        }
+
+        private void SaveCheckStateToDatabase()
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(ParentSubjectName) && !string.IsNullOrEmpty(ParentTopicGroupName) && !string.IsNullOrEmpty(Name))
+                {
+                    var dbHelper = SP.Modules.Common.Helpers.DatabaseHelper.Instance;
+                    dbHelper.UpdateDailyTopicItemCompletion(DateTime.Today, ParentSubjectName, ParentTopicGroupName, Name, IsCompleted);
+                    System.Diagnostics.Debug.WriteLine($"[TopicItem] 체크 상태 저장: {Name} = {IsCompleted}");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[TopicItem] 체크 상태 저장 오류: {ex.Message}");
+            }
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;

@@ -1,7 +1,7 @@
 ﻿using System.Collections.ObjectModel;
 using System.Windows.Input;
-using SP.Modules.Common.ViewModels; // TopicGroupViewModel 위치
-using SP.ViewModels; // RelayCommand, ViewModelBase 등
+using SP.Modules.Common.ViewModels;
+using SP.ViewModels;
 
 namespace SP.Modules.Subjects.ViewModels
 {
@@ -11,7 +11,7 @@ namespace SP.Modules.Subjects.ViewModels
         public int SubjectId { get; set; }
         public ObservableCollection<TopicGroupViewModel> TopicGroups { get; set; } = new();
 
-        private bool _isExpanded = true;
+        private bool _isExpanded = false;
         public bool IsExpanded
         {
             get => _isExpanded;
@@ -25,26 +25,60 @@ namespace SP.Modules.Subjects.ViewModels
             ToggleCommand = new RelayCommand(() => IsExpanded = !IsExpanded);
         }
 
-        //  [1] 과목별 학습시간 (초 단위)
-        public int TotalStudyTime { get; set; }
-
-        //  [2] 전체 과목 학습시간 중 이 과목이 차지하는 비율
-        private static int _totalAllSubjectsTime = 0; // 모든 과목의 총합
-        public static void SetGlobalTotalTime(int total)
+        // ✅ 메인 프로퍼티: 과목별 학습시간 (초 단위)
+        private int _totalStudyTimeSeconds;
+        public int TotalStudyTimeSeconds
         {
-            _totalAllSubjectsTime = total;
+            get => _totalStudyTimeSeconds;
+            set
+            {
+                if (SetProperty(ref _totalStudyTimeSeconds, value))
+                {
+                    OnPropertyChanged(nameof(TotalStudyTime)); // 호환성
+                    OnPropertyChanged(nameof(ProgressRatio));
+                    OnPropertyChanged(nameof(ProgressWidth));
+                    OnPropertyChanged(nameof(StudyTimeText));
+                }
+            }
         }
 
-        public double ProgressRatio => _totalAllSubjectsTime > 0
-            ? (double)TotalStudyTime / _totalAllSubjectsTime
-            : 0;
-        public double ProgressWidth => ProgressRatio * 200; // 200은 ProgressBar의 최대 너비에 맞게 조정
+        // ✅ 호환성을 위한 프로퍼티 (기존 코드들이 사용)
+        public int TotalStudyTime
+        {
+            get => TotalStudyTimeSeconds;
+            set => TotalStudyTimeSeconds = value;
+        }
 
-        // ✅ 외부에서 진행률 업데이트를 위한 공개 메서드 추가
+        // ✅ 전체 과목 학습시간 중 이 과목이 차지하는 비율 (초단위 기준)
+        private static int _totalAllSubjectsTimeSeconds = 0;
+        public static void SetGlobalTotalTime(int totalSeconds)
+        {
+            _totalAllSubjectsTimeSeconds = totalSeconds;
+        }
+
+        public double ProgressRatio => _totalAllSubjectsTimeSeconds > 0
+            ? (double)TotalStudyTimeSeconds / _totalAllSubjectsTimeSeconds
+            : 0;
+
+        public double ProgressWidth => ProgressRatio * 200; // 200은 ProgressBar의 최대 너비
+
+        // ✅ 시간 표시 텍스트 (00:00:00 형식)
+        public string StudyTimeText
+        {
+            get
+            {
+                var hours = TotalStudyTimeSeconds / 3600;
+                var minutes = (TotalStudyTimeSeconds % 3600) / 60;
+                var seconds = TotalStudyTimeSeconds % 60;
+                return $"{hours:D2}:{minutes:D2}:{seconds:D2}";
+            }
+        }
+
         public void NotifyProgressChanged()
         {
             OnPropertyChanged(nameof(ProgressRatio));
             OnPropertyChanged(nameof(ProgressWidth));
+            OnPropertyChanged(nameof(StudyTimeText));
         }
     }
 }
