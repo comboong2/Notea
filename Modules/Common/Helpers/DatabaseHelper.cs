@@ -1219,6 +1219,92 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
+        public void CleanupDuplicateData(DateTime date)
+        {
+            ExecuteWithRetry(() =>
+            {
+                lock (_lockObject)
+                {
+                    try
+                    {
+                        using var conn = GetConnection();
+                        conn.Open();
+                        using var transaction = conn.BeginTransaction();
+
+                        try
+                        {
+                            // 1. 중복 데이터 확인
+                            using var checkCmd = conn.CreateCommand();
+                            checkCmd.Transaction = transaction;
+                            checkCmd.CommandText = "SELECT COUNT(*) FROM DailySubject WHERE Date = @date";
+                            checkCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
+                            var count = Convert.ToInt32(checkCmd.ExecuteScalar());
+
+                            System.Diagnostics.Debug.WriteLine($"[DB] 정리 전 DailySubject 개수: {count}개");
+
+                            // 2. 중복 데이터 삭제 (최신 것만 남기고)
+                            using var cleanupCmd = conn.CreateCommand();
+                            cleanupCmd.Transaction = transaction;
+                            cleanupCmd.CommandText = @"
+                        DELETE FROM DailySubject 
+                        WHERE Date = @date 
+                        AND Id NOT IN (
+                            SELECT MAX(Id) 
+                            FROM DailySubject 
+                            WHERE Date = @date 
+                            GROUP BY SubjectName
+                        )";
+                            cleanupCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
+                            var deletedCount = cleanupCmd.ExecuteNonQuery();
+
+                            // 3. DailyTopicGroup도 정리
+                            using var cleanupGroupCmd = conn.CreateCommand();
+                            cleanupGroupCmd.Transaction = transaction;
+                            cleanupGroupCmd.CommandText = @"
+                        DELETE FROM DailyTopicGroup 
+                        WHERE Date = @date 
+                        AND Id NOT IN (
+                            SELECT MAX(Id) 
+                            FROM DailyTopicGroup 
+                            WHERE Date = @date 
+                            GROUP BY SubjectName, GroupTitle
+                        )";
+                            cleanupGroupCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
+                            var deletedGroupCount = cleanupGroupCmd.ExecuteNonQuery();
+
+                            // 4. DailyTopicItem도 정리
+                            using var cleanupItemCmd = conn.CreateCommand();
+                            cleanupItemCmd.Transaction = transaction;
+                            cleanupItemCmd.CommandText = @"
+                        DELETE FROM DailyTopicItem 
+                        WHERE Date = @date 
+                        AND Id NOT IN (
+                            SELECT MAX(Id) 
+                            FROM DailyTopicItem 
+                            WHERE Date = @date 
+                            GROUP BY SubjectName, GroupTitle, TopicName
+                        )";
+                            cleanupItemCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
+                            var deletedItemCount = cleanupItemCmd.ExecuteNonQuery();
+
+                            transaction.Commit();
+
+                            System.Diagnostics.Debug.WriteLine($"[DB] 정리 완료 - 삭제된 DailySubject: {deletedCount}개, TopicGroup: {deletedGroupCount}개, TopicItem: {deletedItemCount}개");
+                        }
+                        catch
+                        {
+                            transaction.Rollback();
+                            throw;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[DB] 데이터 정리 오류: {ex.Message}");
+                    }
+                }
+            });
+        }
+
         // IDisposable 구현 (메모리 누수 방지)
         public void Dispose()
         {
