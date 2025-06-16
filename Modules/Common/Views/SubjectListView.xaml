@@ -32,11 +32,33 @@
                         <ItemsControl ItemsSource="{Binding TopicGroups}" Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVisibilityConverter}}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid Height="60" VerticalAlignment="Center" Background="Transparent"
+                                    <StackPanel>
+                                        <Grid Height="60" VerticalAlignment="Center" Background="Transparent"
+                                       MouseLeftButtonDown="TopicGroup_MouseLeftButtonDown"
+                                       MouseMove="TopicGroup_MouseMove">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="20" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding GroupTitle}" Margin="10,0" FontSize="14" FontWeight="Bold" VerticalAlignment="Center" x:Name="GroupTitleText"/>
+                                            <Button Grid.Column="1" Command="{Binding ToggleCommand}" Style="{StaticResource FolderButtonStyle}" VerticalAlignment="Center"
+                                        Visibility="{Binding Topics, Converter={StaticResource HasItemsToVisibilityConverter}}"/>
+                                        </Grid>
+
+
+                                        <!-- 토픽 그룹 - 드래그 가능하도록 수정 -->
+                                        <ItemsControl ItemsSource="{Binding Topics}" Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Height="60" VerticalAlignment="Center" Background="Transparent"
                                           MouseLeftButtonDown="TopicGroup_MouseLeftButtonDown"
                                           MouseMove="TopicGroup_MouseMove">
-                                        <TextBlock Text="{Binding GroupTitle}" Margin="10,0" FontSize="14" FontWeight="Bold" VerticalAlignment="Center"/>
-                                    </Grid>
+                                                        <TextBlock Text="{Binding Name}" Margin="10,0" FontSize="14" FontWeight="Bold" VerticalAlignment="Center"/>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
