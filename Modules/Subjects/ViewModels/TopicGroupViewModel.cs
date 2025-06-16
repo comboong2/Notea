@@ -8,9 +8,7 @@ namespace SP.Modules.Subjects.ViewModels
     public class TopicGroupViewModel : ViewModelBase
     {
         public string GroupTitle { get; set; } = string.Empty;
-
         public string ParentSubjectName { get; set; } = string.Empty;
-
         public ObservableCollection<TopicItem> Topics { get; set; } = new();
 
         private bool _isExpanded = false;
@@ -20,7 +18,7 @@ namespace SP.Modules.Subjects.ViewModels
             set => SetProperty(ref _isExpanded, value);
         }
 
-        // 🆕 체크 상태 추가 - DB 저장 기능 포함
+        // ✅ 체크 상태 추가 - DB 저장 기능 포함
         private bool _isCompleted = false;
         public bool IsCompleted
         {
@@ -29,7 +27,6 @@ namespace SP.Modules.Subjects.ViewModels
             {
                 if (SetProperty(ref _isCompleted, value))
                 {
-                    // 🆕 체크 상태 변경 시 DB에 저장
                     SaveCheckStateToDatabase();
                 }
             }
@@ -42,6 +39,7 @@ namespace SP.Modules.Subjects.ViewModels
             ToggleCommand = new RelayCommand(() => IsExpanded = !IsExpanded);
         }
 
+        // ✅ 모든 시간 관련 프로퍼티를 초단위로 수정
         private int _todayStudyTimeSeconds;
         public int TodayStudyTimeSeconds
         {
@@ -52,12 +50,22 @@ namespace SP.Modules.Subjects.ViewModels
                 {
                     OnPropertyChanged(nameof(ProgressRatio));
                     OnPropertyChanged(nameof(StudyTimeTooltip));
+                    OnPropertyChanged(nameof(StudyTimeText));
+                    OnPropertyChanged(nameof(TotalStudyTime)); // 호환성
+                    OnPropertyChanged(nameof(TotalStudyTimeSeconds)); // 메인 프로퍼티
                 }
             }
         }
 
-        // ✅ 분류별 학습 시간 (초 단위)
+        // ✅ 호환성을 위한 프로퍼티 (기존 분류별 학습 시간)
         public int TotalStudyTime
+        {
+            get => TodayStudyTimeSeconds;
+            set => TodayStudyTimeSeconds = value;
+        }
+
+        // ✅ 메인 프로퍼티: 초단위 분류별 학습시간
+        public int TotalStudyTimeSeconds
         {
             get => TodayStudyTimeSeconds;
             set => TodayStudyTimeSeconds = value;
@@ -75,11 +83,11 @@ namespace SP.Modules.Subjects.ViewModels
             System.Diagnostics.Debug.WriteLine($"[TopicGroup] {GroupTitle} 업데이트된 ProgressRatio: {ProgressRatio:P2}");
         }
 
-        // ✅ 전체 과목 학습 시간 (외부에서 주입)
-        private int _subjectTotalTime;
-        public void SetSubjectTotalTime(int subjectTime)
+        // ✅ 전체 과목 학습 시간 (외부에서 주입) - 초단위
+        private int _subjectTotalTimeSeconds;
+        public void SetSubjectTotalTime(int subjectTimeSeconds)
         {
-            _subjectTotalTime = subjectTime;
+            _subjectTotalTimeSeconds = subjectTimeSeconds;
             OnPropertyChanged(nameof(ProgressRatio));
         }
 
@@ -99,19 +107,30 @@ namespace SP.Modules.Subjects.ViewModels
             }
         }
 
-        // 🆕 학습 시간을 00:00:00 형식으로 표시하는 툴팁
+        // ✅ 학습 시간을 00:00:00 형식으로 표시하는 텍스트들
+        public string StudyTimeText
+        {
+            get
+            {
+                var hours = TotalStudyTimeSeconds / 3600;
+                var minutes = (TotalStudyTimeSeconds % 3600) / 60;
+                var seconds = TotalStudyTimeSeconds % 60;
+                return $"{hours:D2}:{minutes:D2}:{seconds:D2}";
+            }
+        }
+
         public string StudyTimeTooltip
         {
             get
             {
-                var hours = TotalStudyTime / 3600;
-                var minutes = (TotalStudyTime % 3600) / 60;
-                var seconds = TotalStudyTime % 60;
+                var hours = TotalStudyTimeSeconds / 3600;
+                var minutes = (TotalStudyTimeSeconds % 3600) / 60;
+                var seconds = TotalStudyTimeSeconds % 60;
                 return $"{hours:D2}:{minutes:D2}:{seconds:D2} ({ProgressRatio:P1})";
             }
         }
 
-        // 🆕 체크 상태를 DB에 저장하는 메소드
+        // ✅ 체크 상태를 DB에 저장하는 메소드
         private void SaveCheckStateToDatabase()
         {
             try
