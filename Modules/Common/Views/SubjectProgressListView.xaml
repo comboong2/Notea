@@ -52,7 +52,7 @@
                                         <Rectangle Fill="#000000" HorizontalAlignment="Right">
                                             <Rectangle.Width>
                                                 <MultiBinding Converter="{StaticResource DynamicProgressToWidthConverter}">
-                                                    <Binding Path="Progress"/>
+                                                    <Binding Path="ActualProgress"/>
                                                     <Binding Path="ActualWidth" RelativeSource="{RelativeSource AncestorType=Border}"/>
                                                 </MultiBinding>
                                             </Rectangle.Width>

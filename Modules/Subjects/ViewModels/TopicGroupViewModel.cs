@@ -42,12 +42,37 @@ namespace SP.Modules.Subjects.ViewModels
             ToggleCommand = new RelayCommand(() => IsExpanded = !IsExpanded);
         }
 
+        private int _todayStudyTimeSeconds;
+        public int TodayStudyTimeSeconds
+        {
+            get => _todayStudyTimeSeconds;
+            set
+            {
+                if (SetProperty(ref _todayStudyTimeSeconds, value))
+                {
+                    OnPropertyChanged(nameof(ProgressRatio));
+                    OnPropertyChanged(nameof(StudyTimeTooltip));
+                }
+            }
+        }
+
         // ✅ 분류별 학습 시간 (초 단위)
-        private int _totalStudyTime;
         public int TotalStudyTime
         {
-            get => _totalStudyTime;
-            set => SetProperty(ref _totalStudyTime, value);
+            get => TodayStudyTimeSeconds;
+            set => TodayStudyTimeSeconds = value;
+        }
+
+        private int _parentTodayStudyTimeSeconds;
+
+        public void SetParentTodayStudyTime(int parentTodayTimeSeconds)
+        {
+            _parentTodayStudyTimeSeconds = parentTodayTimeSeconds;
+            OnPropertyChanged(nameof(ProgressRatio));
+            OnPropertyChanged(nameof(StudyTimeTooltip));
+
+            System.Diagnostics.Debug.WriteLine($"[TopicGroup] {GroupTitle} 부모 오늘 시간 설정: {parentTodayTimeSeconds}초");
+            System.Diagnostics.Debug.WriteLine($"[TopicGroup] {GroupTitle} 업데이트된 ProgressRatio: {ProgressRatio:P2}");
         }
 
         // ✅ 전체 과목 학습 시간 (외부에서 주입)
@@ -59,9 +84,20 @@ namespace SP.Modules.Subjects.ViewModels
         }
 
         // ✅ 퍼센트 계산 (0.0 ~ 1.0)
-        public double ProgressRatio => _subjectTotalTime > 0
-            ? (double)TotalStudyTime / _subjectTotalTime
-            : 0.0;
+        public double ProgressRatio
+        {
+            get
+            {
+                if (_parentTodayStudyTimeSeconds == 0)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[TopicGroup] {GroupTitle} ProgressRatio 계산 실패: 부모의 오늘 학습시간이 0입니다.");
+                    return 0.0;
+                }
+
+                var ratio = (double)TodayStudyTimeSeconds / _parentTodayStudyTimeSeconds;
+                return Math.Min(1.0, ratio); // 100% 이상은 100%로 제한
+            }
+        }
 
         // 🆕 학습 시간을 00:00:00 형식으로 표시하는 툴팁
         public string StudyTimeTooltip
@@ -71,7 +107,7 @@ namespace SP.Modules.Subjects.ViewModels
                 var hours = TotalStudyTime / 3600;
                 var minutes = (TotalStudyTime % 3600) / 60;
                 var seconds = TotalStudyTime % 60;
-                return $"{hours:D2}:{minutes:D2}:{seconds:D2}";
+                return $"{hours:D2}:{minutes:D2}:{seconds:D2} ({ProgressRatio:P1})";
             }
         }
 
