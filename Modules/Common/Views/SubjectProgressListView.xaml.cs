@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.ObjectModel;
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -65,7 +66,7 @@ namespace SP.Modules.Common.Views
             }
         }
 
-        // 🆕 TopicGroup 드래그 이벤트 (삭제용)
+        // TopicGroup 드래그 이벤트 (삭제용)
         private void TopicGroup_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             _startPoint = e.GetPosition(null);
@@ -172,12 +173,12 @@ namespace SP.Modules.Common.Views
                 {
                     HandleRemoveTopicGroup(e, targetCollection);
                 }
-                // 과목 추가 처리 (전체 과목이 아닌 해당 과목만)
+                // 과목 추가 처리
                 else if (e.Data.GetDataPresent("SubjectData"))
                 {
                     HandleAddSingleSubject(e, targetCollection);
                 }
-                // TopicGroup 추가 처리 (해당 TopicGroup만)
+                // TopicGroup 추가 처리
                 else if (e.Data.GetDataPresent("TopicData"))
                 {
                     HandleAddSingleTopicGroup(e, targetCollection);
@@ -191,7 +192,7 @@ namespace SP.Modules.Common.Views
             e.Handled = true;
         }
 
-        // 과목 제거 (전체 과목 삭제)
+        // ✅ 과목 제거 - 단순화 (DailySubject에서만 제거, 실제 시간은 StudySession에 보존)
         private void HandleRemoveSubject(DragEventArgs e, ObservableCollection<SubjectProgressViewModel> targetCollection)
         {
             var subjectToRemove = e.Data.GetData("RemoveSubjectData") as SubjectProgressViewModel;
@@ -203,16 +204,21 @@ namespace SP.Modules.Common.Views
 
                 if (existingSubject != null)
                 {
-                    targetCollection.Remove(existingSubject);
-                    System.Diagnostics.Debug.WriteLine($"[DragDrop] 과목 '{subjectToRemove.SubjectName}' 전체 제거됨");
+                    var subjectName = existingSubject.SubjectName;
 
+                    // ✅ 1단계: UI 컬렉션에서 제거
+                    targetCollection.Remove(existingSubject);
+
+                    // ✅ 2단계: DailySubject에서만 제거 (실제 시간은 StudySession에 보존됨)
                     var dbHelper = DatabaseHelper.Instance;
-                    dbHelper.RemoveDailySubject(DateTime.Today, subjectToRemove.SubjectName);
+                    dbHelper.RemoveDailySubject(DateTime.Today, subjectName);
+
+                    System.Diagnostics.Debug.WriteLine($"[DragDrop] 과목 '{subjectName}' 오늘 할 일에서 제거 (실제 시간은 StudySession에 보존)");
                 }
             }
         }
 
-        // TopicGroup 제거 (해당 TopicGroup만 삭제, 부모 과목은 유지)
+        // ✅ TopicGroup 제거 - 단순화 
         private void HandleRemoveTopicGroup(DragEventArgs e, ObservableCollection<SubjectProgressViewModel> targetCollection)
         {
             var topicGroupToRemove = e.Data.GetData("RemoveTopicGroupData") as TopicGroupViewModel;
@@ -229,17 +235,17 @@ namespace SP.Modules.Common.Views
 
                     if (existingTopicGroup != null)
                     {
+                        // ✅ UI에서 제거 (실제 시간은 StudySession에 보존됨)
                         parentSubject.TopicGroups.Remove(existingTopicGroup);
-                        System.Diagnostics.Debug.WriteLine($"[DragDrop] TopicGroup '{topicGroupToRemove.GroupTitle}' 제거됨 (부모: {topicGroupToRemove.ParentSubjectName})");
 
-                        // 🔄 부모 과목은 TopicGroup이 없어도 유지
+                        System.Diagnostics.Debug.WriteLine($"[DragDrop] TopicGroup '{existingTopicGroup.GroupTitle}' 제거됨 (실제 시간은 보존)");
                         System.Diagnostics.Debug.WriteLine($"[DragDrop] 부모 과목 '{parentSubject.SubjectName}' 유지됨 (TopicGroup 개수: {parentSubject.TopicGroups.Count})");
                     }
                 }
             }
         }
 
-        // 단일 과목 추가 (해당 과목만, TopicGroups 포함하지 않음)
+        // ✅ 과목 추가 - 단순화 (실제 시간은 자동으로 StudySession에서 조회됨)
         private void HandleAddSingleSubject(DragEventArgs e, ObservableCollection<SubjectProgressViewModel> targetCollection)
         {
             var droppedSubject = e.Data.GetData("SubjectData") as SubjectGroupViewModel;
@@ -252,16 +258,14 @@ namespace SP.Modules.Common.Views
 
                 if (existingSubject == null)
                 {
+                    // ✅ 새 과목 생성 (시간은 TodayStudyTimeSeconds에서 자동 조회)
                     var newSubjectProgress = new SubjectProgressViewModel
                     {
-                        SubjectName = droppedSubject.SubjectName,
-                        Progress = 0.1, // 테스트용 초기값
-                        StudyTimeMinutes = 30 // 테스트용 초기값
+                        SubjectName = droppedSubject.SubjectName
                     };
 
-                    // 🔄 TopicGroups는 추가하지 않음 (과목만 추가)
                     targetCollection.Add(newSubjectProgress);
-                    System.Diagnostics.Debug.WriteLine($"[DragDrop] 과목 '{droppedSubject.SubjectName}' 단독 추가됨");
+                    System.Diagnostics.Debug.WriteLine($"[DragDrop] 과목 '{droppedSubject.SubjectName}' 추가됨 (시간 자동 조회: {newSubjectProgress.TodayStudyTimeSeconds}초)");
                 }
                 else
                 {
@@ -270,7 +274,7 @@ namespace SP.Modules.Common.Views
             }
         }
 
-        // 단일 TopicGroup 추가 (상위 과목이 없으면 과목도 함께 생성, Topics는 제외)
+        // ✅ TopicGroup 추가 - 단순화
         private void HandleAddSingleTopicGroup(DragEventArgs e, ObservableCollection<SubjectProgressViewModel> targetCollection)
         {
             var droppedTopic = e.Data.GetData("TopicData") as TopicGroupViewModel;
@@ -290,56 +294,45 @@ namespace SP.Modules.Common.Views
 
                     if (existingSubject != null)
                     {
-                        // ✅ 기존 과목에 TopicGroup 추가 (중복 체크)
+                        // 기존 과목에 TopicGroup 추가
                         var existingTopic = existingSubject.TopicGroups.FirstOrDefault(t =>
                             string.Equals(t.GroupTitle, droppedTopic.GroupTitle, StringComparison.OrdinalIgnoreCase));
 
                         if (existingTopic == null)
                         {
-                            // ✅ 새로운 TopicGroup 생성
                             var newTopicGroup = new TopicGroupViewModel
                             {
                                 GroupTitle = droppedTopic.GroupTitle,
                                 ParentSubjectName = effectiveParentName,
-                                TodayStudyTimeSeconds = 0, // ✅ 수정: 초기값 0초
-                                Topics = new ObservableCollection<SP.Modules.Subjects.Models.TopicItem>() // 빈 컬렉션
+                                Topics = new ObservableCollection<SP.Modules.Subjects.Models.TopicItem>()
                             };
 
-                            // ✅ 수정: 부모의 오늘 학습시간 설정 (올바른 메소드 사용)
                             newTopicGroup.SetParentTodayStudyTime(existingSubject.TodayStudyTimeSeconds);
-
                             existingSubject.TopicGroups.Add(newTopicGroup);
-                            System.Diagnostics.Debug.WriteLine($"[DragDrop] 기존 과목 '{effectiveParentName}'에 TopicGroup '{droppedTopic.GroupTitle}' 추가됨 (부모 오늘시간: {existingSubject.TodayStudyTimeSeconds}초)");
-                        }
-                        else
-                        {
-                            System.Diagnostics.Debug.WriteLine($"[DragDrop] TopicGroup '{droppedTopic.GroupTitle}'가 이미 존재함");
+
+                            System.Diagnostics.Debug.WriteLine($"[DragDrop] 기존 과목 '{effectiveParentName}'에 TopicGroup '{droppedTopic.GroupTitle}' 추가됨");
                         }
                     }
                     else
                     {
-                        // ✅ 새 과목과 TopicGroup 함께 추가
+                        // 새 과목과 TopicGroup 함께 추가
                         var newSubjectProgress = new SubjectProgressViewModel
                         {
-                            SubjectName = effectiveParentName,
-                            Progress = 0.0, // ✅ 수정: 0.0으로 초기화
-                            TodayStudyTimeSeconds = 3600 // ✅ 수정: 기본값 1시간 (3600초)
+                            SubjectName = effectiveParentName
                         };
 
-                        // ✅ 새로운 TopicGroup 생성
                         var newTopicGroup = new TopicGroupViewModel
                         {
                             GroupTitle = droppedTopic.GroupTitle,
                             ParentSubjectName = effectiveParentName,
-                            TodayStudyTimeSeconds = 0, // ✅ 수정: 초기값 0초
-                            Topics = new ObservableCollection<SP.Modules.Subjects.Models.TopicItem>() // 빈 컬렉션
+                            Topics = new ObservableCollection<SP.Modules.Subjects.Models.TopicItem>()
                         };
 
-                        // ✅ 수정: 부모의 오늘 학습시간 설정
                         newTopicGroup.SetParentTodayStudyTime(newSubjectProgress.TodayStudyTimeSeconds);
-
                         newSubjectProgress.TopicGroups.Add(newTopicGroup);
                         targetCollection.Add(newSubjectProgress);
+
+                        System.Diagnostics.Debug.WriteLine($"[DragDrop] 새 과목 '{effectiveParentName}'과 TopicGroup '{droppedTopic.GroupTitle}' 추가됨");
                     }
                 }
             }

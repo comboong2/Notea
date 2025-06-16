@@ -20,6 +20,29 @@ namespace SP.Modules.Common.ViewModels
         private bool _isRunning;
         private DateTime _sessionStartTime;   // 세션 시작 시간
 
+        // ✅ 타이머 상태 이벤트 (추후 과목페이지/분류그룹에서 구독할 예정)
+        public event Action<bool> TimerStatusChanged;
+
+        // ✅ 현재 활성 과목/분류 정보 (추후 과목페이지에서 설정할 예정)
+        private string _currentActiveSubject = string.Empty;
+        private string _currentActiveTopicGroup = string.Empty;
+
+        // ✅ 활성 과목/분류 설정 메소드 (추후 과목페이지에서 호출)
+        public void SetActiveSubject(string subjectName, string topicGroup = "")
+        {
+            _currentActiveSubject = subjectName;
+            _currentActiveTopicGroup = topicGroup;
+            System.Diagnostics.Debug.WriteLine($"[Timer] 활성 설정: 과목={subjectName}, 분류={topicGroup}");
+        }
+
+        // ✅ 활성 과목/분류 해제 (페이지 나갈 때)
+        public void ClearActiveSubject()
+        {
+            _currentActiveSubject = string.Empty;
+            _currentActiveTopicGroup = string.Empty;
+            System.Diagnostics.Debug.WriteLine($"[Timer] 활성 해제");
+        }
+
         // 총 학습 시간을 00:00:00 형식으로 표시 (실시간 업데이트 포함)
         public string TotalStudyTimeDisplay
         {
@@ -32,6 +55,7 @@ namespace SP.Modules.Common.ViewModels
         }
 
         public string TimerButtonText => _isRunning ? "일시정지" : "시작";
+        public bool IsTimerRunning => _isRunning;
 
         public ObservableCollection<Note> Memos { get; } = new();
 
@@ -85,11 +109,49 @@ namespace SP.Modules.Common.ViewModels
             EndSession();
         }
 
+        // ✅ 매초 실행되는 타이머 이벤트 - 과목/분류 시간도 함께 증가
         private void OnTimerTick(object sender, EventArgs e)
         {
             _currentSessionTime = _currentSessionTime.Add(TimeSpan.FromSeconds(1));
             OnPropertyChanged(nameof(TotalStudyTimeDisplay));
+
+            // ✅ 활성 과목/분류 시간 증가 (추후 MainViewModel을 통해 호출)
+            if (_isRunning && !string.IsNullOrEmpty(_currentActiveSubject))
+            {
+                UpdateActiveSubjectTime();
+            }
         }
+
+        // ✅ 활성 과목/분류 시간 업데이트 (추후 MainViewModel과 연결)
+        private void UpdateActiveSubjectTime()
+        {
+            try
+            {
+                // 추후 MainViewModel 인스턴스를 통해 호출할 예정
+                // 방법 1: 이벤트 방식
+                // SubjectTimeIncremented?.Invoke(_currentActiveSubject, _currentActiveTopicGroup);
+
+                // 방법 2: 직접 참조 방식 (추후 설정)
+                // if (_mainViewModelRef != null)
+                // {
+                //     _mainViewModelRef.OnSubjectPageActivity(_currentActiveSubject);
+                //     
+                //     if (!string.IsNullOrEmpty(_currentActiveTopicGroup))
+                //     {
+                //         _mainViewModelRef.OnTopicGroupActivity(_currentActiveSubject, _currentActiveTopicGroup);
+                //     }
+                // }
+
+                System.Diagnostics.Debug.WriteLine($"[Timer] 시간 증가: 과목={_currentActiveSubject}, 분류={_currentActiveTopicGroup}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Timer] 시간 업데이트 오류: {ex.Message}");
+            }
+        }
+
+        // ✅ 과목/분류 시간 증가 이벤트 (추후 MainViewModel에서 구독)
+        public event Action<string, string> SubjectTimeIncremented;
 
         private void ToggleTimer()
         {
@@ -124,6 +186,10 @@ namespace SP.Modules.Common.ViewModels
 
             _isRunning = !_isRunning;
             OnPropertyChanged(nameof(TimerButtonText));
+            OnPropertyChanged(nameof(IsTimerRunning));
+
+            // ✅ 타이머 상태 변경 이벤트 발생
+            TimerStatusChanged?.Invoke(_isRunning);
         }
 
         // 현재 세션을 DB에 저장
@@ -159,6 +225,7 @@ namespace SP.Modules.Common.ViewModels
 
             OnPropertyChanged(nameof(TotalStudyTimeDisplay));
             OnPropertyChanged(nameof(TimerButtonText));
+            OnPropertyChanged(nameof(IsTimerRunning));
         }
 
         // 오늘의 총 학습 시간을 DB에서 로드
@@ -177,6 +244,12 @@ namespace SP.Modules.Common.ViewModels
                 System.Diagnostics.Debug.WriteLine($"[Timer] 총 학습 시간 로드 오류: {ex.Message}");
                 _todayTotalTime = TimeSpan.Zero;
             }
+        }
+
+        // ✅ 오늘 총 시간 강제 새로고침 (날짜 변경시 호출)
+        public void RefreshTodayTotalTime()
+        {
+            LoadTodayTotalTime();
         }
 
         private void AddMemo()
