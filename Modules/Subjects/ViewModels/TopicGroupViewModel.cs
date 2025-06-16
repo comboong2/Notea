@@ -20,6 +20,21 @@ namespace SP.Modules.Subjects.ViewModels
             set => SetProperty(ref _isExpanded, value);
         }
 
+        // 🆕 체크 상태 추가 - DB 저장 기능 포함
+        private bool _isCompleted = false;
+        public bool IsCompleted
+        {
+            get => _isCompleted;
+            set
+            {
+                if (SetProperty(ref _isCompleted, value))
+                {
+                    // 🆕 체크 상태 변경 시 DB에 저장
+                    SaveCheckStateToDatabase();
+                }
+            }
+        }
+
         public ICommand ToggleCommand { get; }
 
         public TopicGroupViewModel()
@@ -47,5 +62,35 @@ namespace SP.Modules.Subjects.ViewModels
         public double ProgressRatio => _subjectTotalTime > 0
             ? (double)TotalStudyTime / _subjectTotalTime
             : 0.0;
+
+        // 🆕 학습 시간을 00:00:00 형식으로 표시하는 툴팁
+        public string StudyTimeTooltip
+        {
+            get
+            {
+                var hours = TotalStudyTime / 3600;
+                var minutes = (TotalStudyTime % 3600) / 60;
+                var seconds = TotalStudyTime % 60;
+                return $"{hours:D2}:{minutes:D2}:{seconds:D2}";
+            }
+        }
+
+        // 🆕 체크 상태를 DB에 저장하는 메소드
+        private void SaveCheckStateToDatabase()
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(ParentSubjectName) && !string.IsNullOrEmpty(GroupTitle))
+                {
+                    var dbHelper = SP.Modules.Common.Helpers.DatabaseHelper.Instance;
+                    dbHelper.UpdateDailyTopicGroupCompletion(System.DateTime.Today, ParentSubjectName, GroupTitle, IsCompleted);
+                    System.Diagnostics.Debug.WriteLine($"[TopicGroup] 체크 상태 저장: {GroupTitle} = {IsCompleted}");
+                }
+            }
+            catch (System.Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[TopicGroup] 체크 상태 저장 오류: {ex.Message}");
+            }
+        }
     }
 }

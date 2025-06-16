@@ -8,7 +8,15 @@ namespace SP.Converters
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            double progress = (double)value;
+            if (value is double containerWidth && parameter != null)
+            {
+                if (double.TryParse(parameter.ToString(), out double ratio))
+                {
+                    return containerWidth * ratio; // 예: 0.5면 50% 너비
+                }
+            }
+
+            double progress = value is double ? (double)value : 0.0;
             double maxWidth = parameter != null ? double.Parse(parameter.ToString()) : 100.0; // 기본 최대 너비
             return progress * maxWidth; // 예: 0.7 * 100 = 70
         }

@@ -27,6 +27,7 @@ namespace SP.Modules.Daily.ViewModels
                     OnPropertyChanged(nameof(ProgressWidth));
                     OnPropertyChanged(nameof(Tooltip));
                     OnPropertyChanged(nameof(ProgressPercentText));
+                    OnPropertyChanged(nameof(StudyTimeText));
                     System.Diagnostics.Debug.WriteLine($"[Progress] {SubjectName} 진행률 업데이트: {_progress:P1}");
                 }
             }
@@ -78,19 +79,25 @@ namespace SP.Modules.Daily.ViewModels
             }
         }
 
-        // 학습 시간을 텍스트로 표시
+        // 🆕 학습 시간을 00:00:00 형식으로 표시 (과목용)
         public string StudyTimeText
         {
             get
             {
-                var hours = StudyTimeMinutes / 60;
-                var minutes = StudyTimeMinutes % 60;
-                return $"{hours}시간 {minutes}분";
+                var totalSeconds = StudyTimeMinutes * 60;
+                var hours = totalSeconds / 3600;
+                var minutes = (totalSeconds % 3600) / 60;
+                var seconds = totalSeconds % 60;
+                return $"{hours:D2}:{minutes:D2}:{seconds:D2}";
             }
         }
 
         // TopicGroup 리스트 (드래그 앤 드롭으로 추가된 분류들)
         public ObservableCollection<TopicGroupViewModel> TopicGroups { get; set; } = new();
+
+        // 🆕 무한 루프 방지를 위한 플래그들
+        private bool _isUpdatingFromDatabase = false;
+        private bool _isSavingToDatabase = false;
 
         public SubjectProgressViewModel()
         {
@@ -98,9 +105,16 @@ namespace SP.Modules.Daily.ViewModels
             Progress = 0.0;
             StudyTimeMinutes = 0;
 
-            // TopicGroups 변경 감지
+            // TopicGroups 변경 감지 - 개선된 로직
             TopicGroups.CollectionChanged += (s, e) =>
             {
+                // 🆕 무한 루프 방지 - DB 업데이트 중이거나 저장 중이면 무시
+                if (_isUpdatingFromDatabase || _isSavingToDatabase)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[SubjectProgress] {SubjectName} TopicGroups 변경 무시됨 (플래그 상태: 업데이트={_isUpdatingFromDatabase}, 저장={_isSavingToDatabase})");
+                    return;
+                }
+
                 System.Diagnostics.Debug.WriteLine($"[SubjectProgress] {SubjectName}의 TopicGroups 변경됨. 현재 개수: {TopicGroups.Count}");
 
                 // 🆕 TopicGroups 변경 시 DB에 저장
@@ -108,21 +122,63 @@ namespace SP.Modules.Daily.ViewModels
             };
         }
 
-        // 🆕 DB에 저장하는 메소드 추가
+        // 🆕 DB에서 데이터를 업데이트할 때 사용하는 메소드 (무한루프 방지)
+        public void UpdateFromDatabase(double progress, int studyTimeMinutes, ObservableCollection<TopicGroupViewModel> topicGroups)
+        {
+            _isUpdatingFromDatabase = true;
+            try
+            {
+                // 기본 속성 업데이트
+                Progress = progress;
+                StudyTimeMinutes = studyTimeMinutes;
+
+                // TopicGroups 업데이트
+                TopicGroups.Clear();
+                foreach (var group in topicGroups)
+                {
+                    TopicGroups.Add(group);
+                }
+
+                System.Diagnostics.Debug.WriteLine($"[SubjectProgress] {SubjectName} DB에서 업데이트됨: {TopicGroups.Count}개 그룹");
+            }
+            finally
+            {
+                _isUpdatingFromDatabase = false;
+            }
+        }
+
+        // 🆕 DB에 저장하는 메소드 수정 - 무한루프 방지
         private void SaveToDatabase()
         {
-            if (!string.IsNullOrEmpty(SubjectName))
+            if (_isSavingToDatabase || _isUpdatingFromDatabase)
             {
-                try
-                {
-                    var dbHelper = SP.Modules.Common.Helpers.DatabaseHelper.Instance;
-                    dbHelper.SaveDailySubject(DateTime.Today, SubjectName, Progress, StudyTimeMinutes, 0);
-                    System.Diagnostics.Debug.WriteLine($"[SubjectProgress] {SubjectName} DB에 저장됨");
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[SubjectProgress] DB 저장 오류: {ex.Message}");
-                }
+                System.Diagnostics.Debug.WriteLine($"[SubjectProgress] {SubjectName} 저장 스킵됨 (이미 저장 중이거나 업데이트 중)");
+                return;
+            }
+
+            if (string.IsNullOrEmpty(SubjectName))
+            {
+                System.Diagnostics.Debug.WriteLine($"[SubjectProgress] SubjectName이 비어있어 저장 스킵됨");
+                return;
+            }
+
+            _isSavingToDatabase = true;
+            try
+            {
+                var dbHelper = SP.Modules.Common.Helpers.DatabaseHelper.Instance;
+
+                // 🆕 TopicGroups도 함께 저장하는 새로운 메소드 사용
+                dbHelper.SaveDailySubjectWithTopicGroups(DateTime.Today, SubjectName, Progress, StudyTimeMinutes, 0, TopicGroups);
+
+                System.Diagnostics.Debug.WriteLine($"[SubjectProgress] {SubjectName}과 TopicGroups({TopicGroups.Count}개) DB에 저장됨");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SubjectProgress] DB 저장 오류: {ex.Message}");
+            }
+            finally
+            {
+                _isSavingToDatabase = false;
             }
         }
 
@@ -145,24 +201,43 @@ namespace SP.Modules.Daily.ViewModels
             }
         }
 
-        // TopicGroup 추가 메소드
+        // TopicGroup 추가 메소드 - 개선됨
         public void AddTopicGroup(TopicGroupViewModel topicGroup)
         {
             if (topicGroup != null && !TopicGroups.Contains(topicGroup))
             {
                 topicGroup.ParentSubjectName = SubjectName; // 부모 정보 설정
-                TopicGroups.Add(topicGroup);
-                System.Diagnostics.Debug.WriteLine($"[SubjectProgress] {SubjectName}에 TopicGroup '{topicGroup.GroupTitle}' 추가됨");
+
+                // 🆕 직접 추가하지 않고 안전한 방법 사용
+                _isUpdatingFromDatabase = true;
+                try
+                {
+                    TopicGroups.Add(topicGroup);
+                    System.Diagnostics.Debug.WriteLine($"[SubjectProgress] {SubjectName}에 TopicGroup '{topicGroup.GroupTitle}' 추가됨");
+                }
+                finally
+                {
+                    _isUpdatingFromDatabase = false;
+                }
             }
         }
 
-        // TopicGroup 제거 메소드
+        // TopicGroup 제거 메소드 - 개선됨
         public void RemoveTopicGroup(TopicGroupViewModel topicGroup)
         {
             if (topicGroup != null && TopicGroups.Contains(topicGroup))
             {
-                TopicGroups.Remove(topicGroup);
-                System.Diagnostics.Debug.WriteLine($"[SubjectProgress] {SubjectName}에서 TopicGroup '{topicGroup.GroupTitle}' 제거됨");
+                // 🆕 직접 제거하지 않고 안전한 방법 사용
+                _isUpdatingFromDatabase = true;
+                try
+                {
+                    TopicGroups.Remove(topicGroup);
+                    System.Diagnostics.Debug.WriteLine($"[SubjectProgress] {SubjectName}에서 TopicGroup '{topicGroup.GroupTitle}' 제거됨");
+                }
+                finally
+                {
+                    _isUpdatingFromDatabase = false;
+                }
             }
         }
 
