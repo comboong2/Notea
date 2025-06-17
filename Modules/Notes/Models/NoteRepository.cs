@@ -1,5 +1,5 @@
 ﻿using Microsoft.Data.Sqlite;
-using Notea.Helpers;
+using SP.Modules.Common.Helpers;
 using SP.Modules.Notes.ViewModels;
 using System;
 using System.Collections.Generic;

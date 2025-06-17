@@ -5,7 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using SP.Modules.Notes.ViewModels;
 
-namespace Notea.Modules.Subject.Views
+namespace SP.Modules.Notes.Views
 {
     /// <summary>
     /// NotePage.xaml에 대한 상호 작용 논리

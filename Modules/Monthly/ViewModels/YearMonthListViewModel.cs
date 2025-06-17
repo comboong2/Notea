@@ -2,7 +2,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using Notea.Helpers;
+using SP.Modules.Common.Helpers;
 using SP.Modules.Monthly.Models;
 
 namespace SP.Modules.Monthly.ViewModels

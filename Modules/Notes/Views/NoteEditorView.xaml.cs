@@ -13,7 +13,7 @@ using System.Windows.Shapes;
 using Path = System.IO.Path;
 using SP.Modules.Notes.ViewModels;
 
-namespace Notea.Modules.Subject.Views
+namespace SP.Modules.Notes.Views
 {
     public partial class NoteEditorView : UserControl
     {

@@ -1,5 +1,5 @@
-﻿using Notea.Helpers;
-using Notea.Modules.Monthly.Views;
+﻿using SP.Modules.Common.Helpers;
+using SP.Modules.Notes.Views;
 using SP.Modules.Monthly.Models;
 using System;
 using System.Collections.Generic;

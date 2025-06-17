@@ -3,7 +3,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
 
-namespace Notea.Converters
+namespace SP.Converters
 {
     public class InverseBoolToVisibilityConverter : IValueConverter
     {
