@@ -6,14 +6,16 @@ using System.Data.SQLite;
 using System.IO;
 using SP.Modules.Subjects.ViewModels;
 using System.Collections.ObjectModel;
+using System.Data; // Added for DataTable
 
 namespace SP.Modules.Common.Helpers
 {
-    public class DatabaseHelper
+    public class DatabaseHelper : IDisposable // IDisposable을 구현하여 리소스 관리
     {
         private static DatabaseHelper _instance;
         private static readonly object _lockObject = new object();
         private readonly string _dbPath;
+        private readonly string _connectionString; // 연결 문자열 저장
 
         // 싱글톤 패턴
         public static DatabaseHelper Instance
@@ -35,14 +37,16 @@ namespace SP.Modules.Common.Helpers
         private DatabaseHelper()
         {
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            _dbPath = Path.Combine(baseDir, "notea.db");
+            _dbPath = Path.Combine(baseDir, "notea.db"); // DB 파일 경로 설정
+            _connectionString = $"Data Source={_dbPath};Version=3;Pooling=true;Max Pool Size=100;Timeout=30;Journal Mode=WAL;";
+
+            // 데이터베이스 초기화
             Initialize();
         }
 
         public SQLiteConnection GetConnection()
         {
-            var connectionString = $"Data Source={_dbPath};Version=3;Pooling=true;Max Pool Size=100;Timeout=30;Journal Mode=WAL;";
-            return new SQLiteConnection(connectionString);
+            return new SQLiteConnection(_connectionString);
         }
 
         public void Initialize()
@@ -71,12 +75,13 @@ namespace SP.Modules.Common.Helpers
                         conn.Open();
 
                         using var pragmaCmd = conn.CreateCommand();
-                        pragmaCmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA cache_size=10000; PRAGMA temp_store=memory;";
+                        // 외래 키 활성화 및 저널 모드 설정
+                        pragmaCmd.CommandText = "PRAGMA foreign_keys = ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA cache_size=10000; PRAGMA temp_store=memory;";
                         pragmaCmd.ExecuteNonQuery();
 
                         var cmd = conn.CreateCommand();
 
-                        // Note 테이블
+                        // SP 프로젝트의 기존 테이블들
                         cmd.CommandText = @"
                             CREATE TABLE IF NOT EXISTS Note (
                                 NoteId INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,7 +91,6 @@ namespace SP.Modules.Common.Helpers
                             );";
                         cmd.ExecuteNonQuery();
 
-                        // Comment 테이블
                         cmd.CommandText = @"
                             CREATE TABLE IF NOT EXISTS Comment (
                                 Date TEXT PRIMARY KEY,
@@ -94,7 +98,6 @@ namespace SP.Modules.Common.Helpers
                             );";
                         cmd.ExecuteNonQuery();
 
-                        // Todo 테이블
                         cmd.CommandText = @"
                             CREATE TABLE IF NOT EXISTS Todo (
                                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -104,7 +107,6 @@ namespace SP.Modules.Common.Helpers
                             );";
                         cmd.ExecuteNonQuery();
 
-                        // ✅ Subject 테이블 (초단위)
                         cmd.CommandText = @"
                             CREATE TABLE IF NOT EXISTS Subject (
                                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -113,7 +115,6 @@ namespace SP.Modules.Common.Helpers
                             );";
                         cmd.ExecuteNonQuery();
 
-                        // ✅ TopicGroup 테이블 (초단위)
                         cmd.CommandText = @"
                             CREATE TABLE IF NOT EXISTS TopicGroup (
                                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -124,7 +125,6 @@ namespace SP.Modules.Common.Helpers
                             );";
                         cmd.ExecuteNonQuery();
 
-                        // TopicItem 테이블
                         cmd.CommandText = @"
                             CREATE TABLE IF NOT EXISTS TopicItem (
                                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -135,7 +135,6 @@ namespace SP.Modules.Common.Helpers
                             );";
                         cmd.ExecuteNonQuery();
 
-                        // StudySession 테이블
                         cmd.CommandText = @"
                             CREATE TABLE IF NOT EXISTS StudySession (
                                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -143,11 +142,12 @@ namespace SP.Modules.Common.Helpers
                                 EndTime TEXT NOT NULL,
                                 DurationSeconds INTEGER NOT NULL,
                                 Date TEXT NOT NULL,
-                                CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                SubjectName TEXT NULL, -- 학습 세션 추적을 위한 컬럼 추가
+                                TopicGroupName TEXT NULL -- 학습 세션 추적을 위한 컬럼 추가
                             );";
                         cmd.ExecuteNonQuery();
 
-                        // ✅ DailySubject 테이블 (초단위)
                         cmd.CommandText = @"
                             CREATE TABLE IF NOT EXISTS DailySubject (
                                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -159,7 +159,6 @@ namespace SP.Modules.Common.Helpers
                             );";
                         cmd.ExecuteNonQuery();
 
-                        // ✅ DailyTopicGroup 테이블 (초단위)
                         cmd.CommandText = @"
                             CREATE TABLE IF NOT EXISTS DailyTopicGroup (
                                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -171,7 +170,6 @@ namespace SP.Modules.Common.Helpers
                             );";
                         cmd.ExecuteNonQuery();
 
-                        // ✅ DailyTopicItem 테이블 (초단위)
                         cmd.CommandText = @"
                             CREATE TABLE IF NOT EXISTS DailyTopicItem (
                                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -184,6 +182,64 @@ namespace SP.Modules.Common.Helpers
                                 IsCompleted INTEGER NOT NULL DEFAULT 0
                             );";
                         cmd.ExecuteNonQuery();
+
+                        // Notea 프로젝트에서 가져온 추가 테이블들
+                        cmd.CommandText = @"
+                            CREATE TABLE IF NOT EXISTS category (
+                                categoryId INTEGER PRIMARY KEY AUTOINCREMENT,
+                                displayOrder INTEGER DEFAULT 0,
+                                title VARCHAR NOT NULL,
+                                subJectId INTEGER NOT NULL,
+                                timeId INTEGER NOT NULL,
+                                level INTEGER DEFAULT 1,
+                                parentCategoryId INTEGER DEFAULT NULL,
+                                FOREIGN KEY (subJectId) REFERENCES subject (Id), 
+                                FOREIGN KEY (timeId) REFERENCES time (timeId)
+                            );";
+                        cmd.ExecuteNonQuery();
+
+                        cmd.CommandText = @"
+                            CREATE TABLE IF NOT EXISTS monthlyEvent (
+                                planId INTEGER PRIMARY KEY AUTOINCREMENT,
+                                title VARCHAR NOT NULL,
+                                description VARCHAR NULL,
+                                isDday BOOLEAN NOT NULL,
+                                startDate DATETIME NOT NULL,
+                                endDate DATETIME NOT NULL,
+                                color VARCHAR NULL
+                            );";
+                        cmd.ExecuteNonQuery();
+
+                        cmd.CommandText = @"
+                            CREATE TABLE IF NOT EXISTS noteContent (
+                                textId INTEGER PRIMARY KEY AUTOINCREMENT,
+                                displayOrder INTEGER DEFAULT 0,
+                                content VARCHAR NULL,
+                                categoryId INTEGER NOT NULL,
+                                subJectId INTEGER NOT NULL,
+                                imageUrl VARCHAR DEFAULT NULL,
+                                contentType VARCHAR DEFAULT 'text',
+                                FOREIGN KEY (categoryId) REFERENCES category (categoryId),
+                                FOREIGN KEY (subJectId) REFERENCES Subject (Id) 
+                            );";
+                        cmd.ExecuteNonQuery();
+
+                        cmd.CommandText = @"
+                            CREATE TABLE IF NOT EXISTS time (
+                                timeId INTEGER PRIMARY KEY AUTOINCREMENT,
+                                createDate DATETIME NOT NULL,
+                                record INT NOT NULL
+                            );";
+                        cmd.ExecuteNonQuery();
+
+                        // 초기 데이터 삽입 (Notea 프로젝트에서 가져옴)
+                        cmd.CommandText = "INSERT OR IGNORE INTO Subject (Id, Name) VALUES (1, '윈도우즈 프로그래밍');";
+                        cmd.ExecuteNonQuery();
+
+                        // 스키마 업데이트 (Notea 프로젝트에서 가져옴)
+                        UpdateSchemaForHeadingLevel(conn);
+                        UpdateSchemaForImageSupport(conn);
+                        UpdateSchemaForMonthlyComment(conn); // 추가된 메서드 호출
 
                         System.Diagnostics.Debug.WriteLine("[DB] 데이터베이스 초기화 완료");
                         break;
@@ -282,8 +338,8 @@ namespace SP.Modules.Common.Helpers
                     else
                     {
                         cmd.CommandText = @"
-                            UPDATE Note 
-                            SET Content = @content, UpdatedAt = CURRENT_TIMESTAMP 
+                            UPDATE Note
+                            SET Content = @content, UpdatedAt = CURRENT_TIMESTAMP
                             WHERE NoteId = @noteId";
                         cmd.Parameters.AddWithValue("@noteId", note.NoteId);
                     }
@@ -530,7 +586,7 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        // ✅ 수정: LoadSubjectsWithGroups 메소드 (초단위 컬럼 사용)
+        // LoadSubjectsWithGroups 메소드
         public List<SubjectGroupViewModel> LoadSubjectsWithGroups()
         {
             return ExecuteWithRetry(() =>
@@ -556,7 +612,7 @@ namespace SP.Modules.Common.Helpers
                         {
                             SubjectId = subjectId,
                             SubjectName = subjectName,
-                            TotalStudyTimeSeconds = totalStudyTimeSeconds, // ✅ 초단위 사용
+                            TotalStudyTimeSeconds = totalStudyTimeSeconds,
                             TopicGroups = new ObservableCollection<TopicGroupViewModel>()
                         };
 
@@ -573,7 +629,7 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        // ✅ 수정: LoadTopicGroupsForSubject 메소드 (초단위 컬럼 사용)
+        // LoadTopicGroupsForSubject 메소드
         private void LoadTopicGroupsForSubject(SQLiteConnection conn, SubjectGroupViewModel subject)
         {
             using var groupCmd = conn.CreateCommand();
@@ -590,12 +646,12 @@ namespace SP.Modules.Common.Helpers
                 var topicGroup = new TopicGroupViewModel
                 {
                     GroupTitle = groupName,
-                    TotalStudyTimeSeconds = groupStudyTimeSeconds, // ✅ 초단위 사용
+                    TotalStudyTimeSeconds = groupStudyTimeSeconds,
                     ParentSubjectName = subject.SubjectName,
                     Topics = new ObservableCollection<SP.Modules.Subjects.Models.TopicItem>()
                 };
 
-                topicGroup.SetSubjectTotalTime(subject.TotalStudyTimeSeconds); // ✅ 초단위 전달
+                topicGroup.SetSubjectTotalTime(subject.TotalStudyTimeSeconds);
 
                 LoadTopicItemsForGroup(conn, topicGroup, groupId);
                 subject.TopicGroups.Add(topicGroup);
@@ -624,7 +680,7 @@ namespace SP.Modules.Common.Helpers
                     ParentTopicGroupName = topicGroup.GroupTitle,
                     ParentSubjectName = topicGroup.ParentSubjectName,
                     Progress = 0.0,
-                    StudyTimeSeconds = 0 // ✅ 초단위 사용
+                    StudyTimeSeconds = 0
                 };
 
                 topicGroup.Topics.Add(topicItem);
@@ -634,7 +690,7 @@ namespace SP.Modules.Common.Helpers
         }
 
 
-        // ✅ 먼저 5개 인수를 받는 메서드 정의
+        // SaveStudySession (5 arguments)
         public void SaveStudySession(DateTime startTime, DateTime endTime, int durationSeconds,
             string subjectName = null, string topicGroupName = null)
         {
@@ -677,13 +733,13 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        // ✅ 기존 3개 인수 메서드 (호환성 유지) - 5개 인수 메서드 호출
+        // SaveStudySession (3 arguments for compatibility)
         public void SaveStudySession(DateTime startTime, DateTime endTime, int durationSeconds)
         {
             SaveStudySession(startTime, endTime, durationSeconds, null, null);
         }
 
-        // ✅ 수정: GetTotalStudyTimeSeconds(DateTime date) 오버로드 추가
+        // GetTotalStudyTimeSeconds (with date)
         public int GetTotalStudyTimeSeconds(DateTime date)
         {
             return ExecuteWithRetry(() =>
@@ -870,7 +926,7 @@ namespace SP.Modules.Common.Helpers
                                         VALUES (@date, @subjectName, @groupTitle, @topicName, @progress, @studyTime, @isCompleted)";
 
                                     topicCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
-                                    topicCmd.Parameters.AddWithValue("@subjectName", subjectName);
+                                    cmd.Parameters.AddWithValue("@subjectName", subjectName);
                                     topicCmd.Parameters.AddWithValue("@groupTitle", topicGroup.GroupTitle);
                                     topicCmd.Parameters.AddWithValue("@topicName", topic.Name);
                                     topicCmd.Parameters.AddWithValue("@progress", topic.Progress);
@@ -893,42 +949,6 @@ namespace SP.Modules.Common.Helpers
                     {
                         System.Diagnostics.Debug.WriteLine($"[DB] DailySubject 저장 오류: {ex.Message}");
                     }
-                }
-            });
-        }
-
-        public List<(string SubjectName, double Progress, int StudyTimeSeconds)> GetDailySubjects(DateTime date)
-        {
-            return ExecuteWithRetry(() =>
-            {
-                lock (_lockObject)
-                {
-                    var result = new List<(string, double, int)>();
-                    try
-                    {
-                        using var conn = GetConnection();
-                        conn.Open();
-                        using var cmd = conn.CreateCommand();
-                        cmd.CommandText = "SELECT SubjectName, Progress, StudyTimeSeconds FROM DailySubject WHERE Date = @date ORDER BY DisplayOrder";
-                        cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
-
-                        using var reader = cmd.ExecuteReader();
-                        while (reader.Read())
-                        {
-                            result.Add((
-                                reader["SubjectName"].ToString(),
-                                Convert.ToDouble(reader["Progress"]),
-                                Convert.ToInt32(reader["StudyTimeSeconds"])
-                            ));
-                        }
-
-                        System.Diagnostics.Debug.WriteLine($"[DB] 오늘 할 일 과목 {result.Count}개 로드됨");
-                    }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[DB] 오늘 할 일 과목 로드 오류: {ex.Message}");
-                    }
-                    return result;
                 }
             });
         }
@@ -1047,7 +1067,7 @@ namespace SP.Modules.Common.Helpers
 
                         try
                         {
-                            // ✅ DailySubject만 삭제 (오늘 할 일 목록에서만 제거)
+                            // DailySubject만 삭제 (오늘 할 일 목록에서만 제거)
                             using var cmd = conn.CreateCommand();
                             cmd.Transaction = transaction;
                             cmd.CommandText = "DELETE FROM DailySubject WHERE Date = @date AND SubjectName = @subjectName";
@@ -1055,7 +1075,7 @@ namespace SP.Modules.Common.Helpers
                             cmd.Parameters.AddWithValue("@subjectName", subjectName);
                             cmd.ExecuteNonQuery();
 
-                            // ✅ 관련 DailyTopicGroup 삭제 (오늘 할 일에서만 제거)
+                            // 관련 DailyTopicGroup 삭제 (오늘 할 일에서만 제거)
                             using var groupCmd = conn.CreateCommand();
                             groupCmd.Transaction = transaction;
                             groupCmd.CommandText = "DELETE FROM DailyTopicGroup WHERE Date = @date AND SubjectName = @subjectName";
@@ -1063,7 +1083,7 @@ namespace SP.Modules.Common.Helpers
                             groupCmd.Parameters.AddWithValue("@subjectName", subjectName);
                             groupCmd.ExecuteNonQuery();
 
-                            // ✅ 관련 DailyTopicItem 삭제 (오늘 할 일에서만 제거)
+                            // 관련 DailyTopicItem 삭제 (오늘 할 일에서만 제거)
                             using var itemCmd = conn.CreateCommand();
                             itemCmd.Transaction = transaction;
                             itemCmd.CommandText = "DELETE FROM DailyTopicItem WHERE Date = @date AND SubjectName = @subjectName";
@@ -1071,9 +1091,9 @@ namespace SP.Modules.Common.Helpers
                             itemCmd.Parameters.AddWithValue("@subjectName", subjectName);
                             itemCmd.ExecuteNonQuery();
 
-                            // ⚠️ 중요: StudySession은 삭제하지 않음!
-                            // StudySession 테이블은 실제 측정된 학습시간이므로 보존
-                            // Subject, TopicGroup, TopicItem 테이블도 기본 구조이므로 보존
+                            // Important: StudySession is not deleted!
+                            // StudySession table stores actual measured study time and should be preserved
+                            // Subject, TopicGroup, TopicItem tables are also basic structures and should be preserved
 
                             transaction.Commit();
                             System.Diagnostics.Debug.WriteLine($"[DB] 오늘 할 일에서 과목 '{subjectName}' 제거됨 (실제 학습시간은 보존)");
@@ -1105,29 +1125,29 @@ namespace SP.Modules.Common.Helpers
 
                         try
                         {
-                            // ✅ DailySubject만 삭제 (오늘 할 일 목록 전체 초기화)
+                            // DailySubject만 삭제 (오늘 할 일 목록 전체 초기화)
                             using var cmd = conn.CreateCommand();
                             cmd.Transaction = transaction;
                             cmd.CommandText = "DELETE FROM DailySubject WHERE Date = @date";
                             cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
                             cmd.ExecuteNonQuery();
 
-                            // ✅ DailyTopicGroup 삭제 (오늘 할 일 관련 분류 전체 제거)
+                            // DailyTopicGroup 삭제 (오늘 할 일 관련 분류 전체 제거)
                             using var groupCmd = conn.CreateCommand();
                             groupCmd.Transaction = transaction;
                             groupCmd.CommandText = "DELETE FROM DailyTopicGroup WHERE Date = @date";
                             groupCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
                             groupCmd.ExecuteNonQuery();
 
-                            // ✅ DailyTopicItem 삭제 (오늘 할 일 관련 토픽 전체 제거)
+                            // DailyTopicItem 삭제 (오늘 할 일 관련 토픽 전체 제거)
                             using var itemCmd = conn.CreateCommand();
                             itemCmd.Transaction = transaction;
                             itemCmd.CommandText = "DELETE FROM DailyTopicItem WHERE Date = @date";
                             itemCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
                             itemCmd.ExecuteNonQuery();
 
-                            // ⚠️ 중요: StudySession, Subject, TopicGroup, TopicItem은 삭제하지 않음!
-                            // 이들은 실제 측정 데이터 및 기본 구조이므로 보존
+                            // Important: StudySession, Subject, TopicGroup, TopicItem are not deleted!
+                            // These are actual measured data and basic structures and should be preserved
 
                             transaction.Commit();
                             System.Diagnostics.Debug.WriteLine($"[DB] 해당 날짜의 모든 오늘 할 일 제거됨 (실제 학습시간은 보존): {date:yyyy-MM-dd}");
@@ -1145,7 +1165,7 @@ namespace SP.Modules.Common.Helpers
                 }
             });
         }
-        // ✅ 새로운 메소드: 실제 학습시간까지 완전 삭제 (관리자 기능용)
+        // New method: Completely remove study data (for admin use)
         public void CompletelyRemoveSubject(string subjectName)
         {
             ExecuteWithRetry(() =>
@@ -1160,38 +1180,38 @@ namespace SP.Modules.Common.Helpers
 
                         try
                         {
-                            // ⚠️ 경고: 이 메소드는 모든 데이터를 완전 삭제합니다!
+                            // Warning: This method permanently deletes all data!
 
-                            // 1. 모든 날짜의 DailySubject 삭제
+                            // 1. Delete DailySubject for all dates
                             using var dailyCmd = conn.CreateCommand();
                             dailyCmd.Transaction = transaction;
                             dailyCmd.CommandText = "DELETE FROM DailySubject WHERE SubjectName = @subjectName";
                             dailyCmd.Parameters.AddWithValue("@subjectName", subjectName);
                             dailyCmd.ExecuteNonQuery();
 
-                            // 2. 모든 날짜의 DailyTopicGroup 삭제
+                            // 2. Delete DailyTopicGroup for all dates
                             using var dailyGroupCmd = conn.CreateCommand();
                             dailyGroupCmd.Transaction = transaction;
                             dailyGroupCmd.CommandText = "DELETE FROM DailyTopicGroup WHERE SubjectName = @subjectName";
                             dailyGroupCmd.Parameters.AddWithValue("@subjectName", subjectName);
                             dailyGroupCmd.ExecuteNonQuery();
 
-                            // 3. 모든 날짜의 DailyTopicItem 삭제
+                            // 3. Delete DailyTopicItem for all dates
                             using var dailyItemCmd = conn.CreateCommand();
                             dailyItemCmd.Transaction = transaction;
                             dailyItemCmd.CommandText = "DELETE FROM DailyTopicItem WHERE SubjectName = @subjectName";
                             dailyItemCmd.Parameters.AddWithValue("@subjectName", subjectName);
                             dailyItemCmd.ExecuteNonQuery();
 
-                            // 4. Subject 테이블에서 삭제 (CASCADE로 TopicGroup, TopicItem도 자동 삭제)
+                            // 4. Delete from Subject table (CASCADE will also delete TopicGroup, TopicItem)
                             using var subjectCmd = conn.CreateCommand();
                             subjectCmd.Transaction = transaction;
                             subjectCmd.CommandText = "DELETE FROM Subject WHERE Name = @subjectName";
                             subjectCmd.Parameters.AddWithValue("@subjectName", subjectName);
                             subjectCmd.ExecuteNonQuery();
 
-                            // 5. StudySession은 과목별로 분류되어 있지 않으므로 삭제하지 않음
-                            //    (전체 학습시간은 모든 과목의 총합이므로)
+                            // 5. StudySession is not categorized by subject, so it is not deleted
+                            // (Total study time is the sum of all subjects)
 
                             transaction.Commit();
                             System.Diagnostics.Debug.WriteLine($"[DB] 과목 '{subjectName}' 완전 삭제됨 (주의: 복구 불가!)");
@@ -1210,7 +1230,7 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        // ===== 체크박스 상태 업데이트 메소드들 =====
+        // ===== Checkbox status update methods =====
         public void UpdateDailyTopicGroupCompletion(DateTime date, string subjectName, string groupTitle, bool isCompleted)
         {
             ExecuteWithRetry(() =>
@@ -1238,7 +1258,7 @@ namespace SP.Modules.Common.Helpers
                 }
             });
         }
-        // ✅ 새로운 메소드: 과목별 실제 측정 시간 계산 (StudySession 기반)
+        // New method: Calculate actual study time per subject (based on StudySession)
         public int GetSubjectActualStudyTimeSeconds(DateTime date, string subjectName)
         {
             return ExecuteWithRetry(() =>
@@ -1250,10 +1270,10 @@ namespace SP.Modules.Common.Helpers
                         using var conn = GetConnection();
                         conn.Open();
 
-                        // ⚠️ 현재는 StudySession이 과목별로 분류되어 있지 않음
-                        // 추후 과목페이지 구현시 StudySession에 SubjectName 컬럼 추가 필요
+                        // Currently StudySession is not categorized by subject
+                        // SubjectName column needs to be added to StudySession for subject page implementation
 
-                        // 임시 방법: DailySubject가 있으면 그 값, 없으면 0
+                        // Temporary: If DailySubject exists, use its value, otherwise 0
                         using var cmd = conn.CreateCommand();
                         cmd.CommandText = "SELECT COALESCE(StudyTimeSeconds, 0) FROM DailySubject WHERE Date = @date AND SubjectName = @subjectName";
                         cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
@@ -1273,7 +1293,7 @@ namespace SP.Modules.Common.Helpers
                 }
             });
         }
-        // ✅ 향후 확장: StudySession 테이블에 SubjectName 추가시 사용할 메소드
+        // Future extension: Method to be used when SubjectName column is added to StudySession table
         public int GetSubjectActualStudyTimeSecondsFromSessions(DateTime date, string subjectName)
         {
             return ExecuteWithRetry(() =>
@@ -1286,10 +1306,10 @@ namespace SP.Modules.Common.Helpers
                         conn.Open();
                         using var cmd = conn.CreateCommand();
 
-                        // ✅ 추후 StudySession 테이블 구조 변경시 사용
+                        // Will be used when StudySession table structure changes in the future
                         cmd.CommandText = @"
-                    SELECT COALESCE(SUM(DurationSeconds), 0) 
-                    FROM StudySession 
+                    SELECT COALESCE(SUM(DurationSeconds), 0)
+                    FROM StudySession
                     WHERE Date = @date AND SubjectName = @subjectName";
                         cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
                         cmd.Parameters.AddWithValue("@subjectName", subjectName);
@@ -1305,7 +1325,7 @@ namespace SP.Modules.Common.Helpers
                 }
             });
         }
-        // ✅ 과목별 실제 측정된 일일 학습시간 조회 (StudySession 기반)
+        // Actual measured daily study time per subject (based on StudySession)
         public int GetSubjectActualDailyTimeSeconds(DateTime date, string subjectName)
         {
             return ExecuteWithRetry(() =>
@@ -1318,10 +1338,10 @@ namespace SP.Modules.Common.Helpers
                         conn.Open();
                         using var cmd = conn.CreateCommand();
 
-                        // StudySession에서 해당 과목의 실제 측정 시간 집계
+                        // Aggregate actual measured time for the subject from StudySession
                         cmd.CommandText = @"
-                    SELECT COALESCE(SUM(DurationSeconds), 0) 
-                    FROM StudySession 
+                    SELECT COALESCE(SUM(DurationSeconds), 0)
+                    FROM StudySession
                     WHERE Date = @date AND SubjectName = @subjectName";
                         cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
                         cmd.Parameters.AddWithValue("@subjectName", subjectName);
@@ -1340,8 +1360,8 @@ namespace SP.Modules.Common.Helpers
                 }
             });
         }
-        // ✅ 분류별 실제 측정된 일일 학습시간 조회 (StudySession 기반)
-        // ✅ 디버그 강화된 분류별 실제 측정 시간 조회
+        // Actual measured daily study time per topic group (based on StudySession)
+        // Debug-enhanced actual measured time per topic group
         public int GetTopicGroupActualDailyTimeSeconds(DateTime date, string subjectName, string topicGroupName)
         {
             return ExecuteWithRetry(() =>
@@ -1353,7 +1373,7 @@ namespace SP.Modules.Common.Helpers
                         using var conn = GetConnection();
                         conn.Open();
 
-                        // ✅ 1단계: 해당 과목의 모든 분류 데이터 확인
+                        // 1st step: Check all category data for the subject
                         using var debugCmd = conn.CreateCommand();
                         debugCmd.CommandText = "SELECT Id, SubjectName, TopicGroupName, DurationSeconds FROM StudySession WHERE Date = @date AND SubjectName = @subjectName";
                         debugCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
@@ -1372,11 +1392,11 @@ namespace SP.Modules.Common.Helpers
                             }
                         }
 
-                        // ✅ 2단계: 특정 분류 시간 조회
+                        // 2nd step: Query for specific category time
                         using var cmd = conn.CreateCommand();
                         cmd.CommandText = @"
-                    SELECT COALESCE(SUM(DurationSeconds), 0) 
-                    FROM StudySession 
+                    SELECT COALESCE(SUM(DurationSeconds), 0)
+                    FROM StudySession
                     WHERE Date = @date AND SubjectName = @subjectName AND TopicGroupName = @topicGroupName";
                         cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
                         cmd.Parameters.AddWithValue("@subjectName", subjectName);
@@ -1387,12 +1407,12 @@ namespace SP.Modules.Common.Helpers
 
                         System.Diagnostics.Debug.WriteLine($"[DB] ✅ 분류 '{subjectName}>{topicGroupName}' {date:yyyy-MM-dd} 실제 측정 시간: {actualTime}초");
 
-                        // ✅ 3단계: TopicGroupName이 NULL인 경우 대체 로직
+                        // 3rd step: Fallback logic if TopicGroupName is NULL
                         if (actualTime == 0)
                         {
                             System.Diagnostics.Debug.WriteLine($"[DB] ⚠️ '{topicGroupName}' 실제 시간이 0초입니다. DailyTopicGroup에서 확인합니다.");
 
-                            // DailyTopicGroup에서 백업 조회
+                            // Fallback query from DailyTopicGroup
                             using var fallbackCmd = conn.CreateCommand();
                             fallbackCmd.CommandText = "SELECT COALESCE(TotalStudyTimeSeconds, 0) FROM DailyTopicGroup WHERE Date = @date AND SubjectName = @subjectName AND GroupTitle = @groupTitle";
                             fallbackCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
@@ -1417,7 +1437,7 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        // ✅ 드래그&드롭 삭제 후 과목이 다시 추가될 때 기존 시간 복원
+        // Restore subject to Daily after drag & drop deletion
         public void RestoreSubjectToDaily(DateTime date, string subjectName)
         {
             ExecuteWithRetry(() =>
@@ -1426,18 +1446,18 @@ namespace SP.Modules.Common.Helpers
                 {
                     try
                     {
-                        // 1. 기존에 DailySubject가 있는지 확인
+                        // 1. Check if DailySubject already exists
                         var existingTime = GetDailySubjectStudyTimeSeconds(date, subjectName);
 
                         if (existingTime == 0)
                         {
-                            // 2. Subject 테이블에서 해당 과목의 누적 시간 가져오기
+                            // 2. Get cumulative time from Subject table
                             var totalTime = GetSubjectTotalStudyTimeSeconds(subjectName);
 
-                            // 3. 임시로 일부 시간을 오늘 시간으로 설정 (테스트용)
-                            var todayTime = Math.Min(3600, totalTime); // 최대 1시간
+                            // 3. Temporarily set some time as today's time (for testing)
+                            var todayTime = Math.Min(3600, totalTime); // Max 1 hour
 
-                            // 4. DailySubject에 복원
+                            // 4. Restore to DailySubject
                             if (todayTime > 0)
                             {
                                 SaveDailySubject(date, subjectName, 0.0, todayTime, 0);
@@ -1509,12 +1529,12 @@ namespace SP.Modules.Common.Helpers
                             using var cleanupCmd = conn.CreateCommand();
                             cleanupCmd.Transaction = transaction;
                             cleanupCmd.CommandText = @"
-                                DELETE FROM DailySubject 
-                                WHERE Date = @date 
+                                DELETE FROM DailySubject
+                                WHERE Date = @date
                                 AND Id NOT IN (
-                                    SELECT MAX(Id) 
-                                    FROM DailySubject 
-                                    WHERE Date = @date 
+                                    SELECT MAX(Id)
+                                    FROM DailySubject
+                                    WHERE Date = @date
                                     GROUP BY SubjectName
                                 )";
                             cleanupCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
@@ -1524,12 +1544,12 @@ namespace SP.Modules.Common.Helpers
                             using var cleanupGroupCmd = conn.CreateCommand();
                             cleanupGroupCmd.Transaction = transaction;
                             cleanupGroupCmd.CommandText = @"
-                                DELETE FROM DailyTopicGroup 
-                                WHERE Date = @date 
+                                DELETE FROM DailyTopicGroup
+                                WHERE Date = @date
                                 AND Id NOT IN (
-                                    SELECT MAX(Id) 
-                                    FROM DailyTopicGroup 
-                                    WHERE Date = @date 
+                                    SELECT MAX(Id)
+                                    FROM DailyTopicGroup
+                                    WHERE Date = @date
                                     GROUP BY SubjectName, GroupTitle
                                 )";
                             cleanupGroupCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
@@ -1539,12 +1559,12 @@ namespace SP.Modules.Common.Helpers
                             using var cleanupItemCmd = conn.CreateCommand();
                             cleanupItemCmd.Transaction = transaction;
                             cleanupItemCmd.CommandText = @"
-                                DELETE FROM DailyTopicItem 
-                                WHERE Date = @date 
+                                DELETE FROM DailyTopicItem
+                                WHERE Date = @date
                                 AND Id NOT IN (
-                                    SELECT MAX(Id) 
-                                    FROM DailyTopicItem 
-                                    WHERE Date = @date 
+                                    SELECT MAX(Id)
+                                    FROM DailyTopicItem
+                                    WHERE Date = @date
                                     GROUP BY SubjectName, GroupTitle, TopicName
                                 )";
                             cleanupItemCmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
@@ -1568,9 +1588,9 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        // ===== 호환성 메소드들 =====
+        // ===== Compatibility methods =====
 
-        // ✅ 제거: 중복된 GetTotalStudyTimeMinutes 메소드들 제거하고 단일 버전만 유지
+        // Removed duplicate GetTotalStudyTimeMinutes methods, keeping single version
         public int GetTotalStudyTimeMinutes(DateTime date)
         {
             return GetTotalStudyTimeSeconds(date) / 60;
@@ -1581,7 +1601,7 @@ namespace SP.Modules.Common.Helpers
             return GetTotalStudyTimeSeconds() / 60;
         }
 
-        // ✅ 기존 호환성 메소드들 (Obsolete 표시)
+        // Existing compatibility methods (marked Obsolete)
         [Obsolete("Use GetTotalAllSubjectsStudyTimeSeconds instead")]
         public int GetTotalAllSubjectsStudyTime()
         {
@@ -1630,7 +1650,7 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        // ✅ 수정: GetDailySubjectStudyTimeSeconds 메소드 (올바른 컬럼명 사용)
+        // GetDailySubjectStudyTimeSeconds method (using correct column name)
         public int GetDailySubjectStudyTimeSeconds(DateTime date, string subjectName)
         {
             return ExecuteWithRetry(() =>
@@ -1654,7 +1674,7 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        // ✅ 수정: GetDailyTopicGroupStudyTimeSeconds 메소드 (올바른 컬럼명 사용)
+        // GetDailyTopicGroupStudyTimeSeconds method (using correct column name)
         public int GetDailyTopicGroupStudyTimeSeconds(DateTime date, string subjectName, string groupTitle)
         {
             return ExecuteWithRetry(() =>
@@ -1679,7 +1699,7 @@ namespace SP.Modules.Common.Helpers
             });
         }
 
-        // IDisposable 구현 (메모리 누수 방지)
+        // IDisposable implementation (prevent memory leaks)
         public void Dispose()
         {
             try
@@ -1693,13 +1713,376 @@ namespace SP.Modules.Common.Helpers
                 System.Diagnostics.Debug.WriteLine($"[DB] Dispose 오류: {ex.Message}");
             }
         }
+
+        // -----------------------------------------------------
+        // Notea 프로젝트에서 가져온 스키마 업데이트 및 유틸리티 메서드 구현
+        // -----------------------------------------------------
+
+        // Database Schema Update for Heading Level
+        private void UpdateSchemaForHeadingLevel(SQLiteConnection conn)
+        {
+            try
+            {
+                // category 테이블에 level 컬럼 추가 (없으면)
+                string checkLevelColumn = @"
+                    SELECT COUNT(*) as count
+                    FROM pragma_table_info('category')
+                    WHERE name='level'";
+
+                using (var cmd = new SQLiteCommand(checkLevelColumn, conn))
+                {
+                    if (Convert.ToInt32(cmd.ExecuteScalar()) == 0)
+                    {
+                        string addLevelColumn = @"ALTER TABLE category ADD COLUMN level INTEGER DEFAULT 1";
+                        using (var addCmd = new SQLiteCommand(addLevelColumn, conn))
+                        {
+                            addCmd.ExecuteNonQuery();
+                        }
+                        System.Diagnostics.Debug.WriteLine("[DB] category.level 컬럼 추가됨");
+                    }
+                }
+
+                // parentCategoryId 컬럼 추가 (계층 구조를 위해)
+                string checkParentColumn = @"
+                    SELECT COUNT(*) as count
+                    FROM pragma_table_info('category')
+                    WHERE name='parentCategoryId'";
+
+                using (var cmd = new SQLiteCommand(checkParentColumn, conn))
+                {
+                    if (Convert.ToInt32(cmd.ExecuteScalar()) == 0)
+                    {
+                        string addParentColumn = @"ALTER TABLE category ADD COLUMN parentCategoryId INTEGER DEFAULT NULL";
+                        using (var addCmd = new SQLiteCommand(addParentColumn, conn))
+                        {
+                            addCmd.ExecuteNonQuery();
+                        }
+                        System.Diagnostics.Debug.WriteLine("[DB] category.parentCategoryId 컬럼 추가됨");
+                    }
+                }
+
+                System.Diagnostics.Debug.WriteLine("[DB] 헤딩 레벨 스키마 업데이트 완료");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DB ERROR] 헤딩 레벨 스키마 업데이트 실패: {ex.Message}");
+            }
+        }
+
+        // Database Schema Update for Image Support
+        private void UpdateSchemaForImageSupport(SQLiteConnection conn)
+        {
+            try
+            {
+                // noteContent 테이블에 imageUrl 컬럼 추가
+                string checkImageColumn = @"
+                    SELECT COUNT(*) as count
+                    FROM pragma_table_info('noteContent')
+                    WHERE name='imageUrl'";
+
+                using (var cmd = new SQLiteCommand(checkImageColumn, conn))
+                {
+                    if (Convert.ToInt32(cmd.ExecuteScalar()) == 0)
+                    {
+                        string addImageColumn = @"ALTER TABLE noteContent ADD COLUMN imageUrl VARCHAR DEFAULT NULL";
+                        using (var addCmd = new SQLiteCommand(addImageColumn, conn))
+                        {
+                            addCmd.ExecuteNonQuery();
+                        }
+                        System.Diagnostics.Debug.WriteLine("[DB] noteContent.imageUrl 컬럼 추가됨");
+                    }
+                }
+
+                // noteContent 테이블에 contentType 컬럼 추가 (text/image 구분)
+                string checkTypeColumn = @"
+                    SELECT COUNT(*) as count
+                    FROM pragma_table_info('noteContent')
+                    WHERE name='contentType'";
+
+                using (var cmd = new SQLiteCommand(checkTypeColumn, conn))
+                {
+                    if (Convert.ToInt32(cmd.ExecuteScalar()) == 0)
+                    {
+                        string addTypeColumn = @"ALTER TABLE noteContent ADD COLUMN contentType VARCHAR DEFAULT 'text'";
+                        using (var addCmd = new SQLiteCommand(addTypeColumn, conn))
+                        {
+                            addCmd.ExecuteNonQuery();
+                        }
+                        System.Diagnostics.Debug.WriteLine("[DB] noteContent.contentType 컬럼 추가됨");
+                    }
+                }
+
+                System.Diagnostics.Debug.WriteLine("[DB] 이미지 지원 스키마 업데이트 완료");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DB ERROR] 이미지 지원 스키마 업데이트 실패: {ex.Message}");
+            }
+        }
+
+        // Database Schema Update for Monthly Comment (이전에 누락되었던 메서드 구현)
+        private void UpdateSchemaForMonthlyComment(SQLiteConnection conn)
+        {
+            try
+            {
+                // monthlyComment 테이블 생성
+                string createTableQuery = @"
+                    CREATE TABLE IF NOT EXISTS monthlyComment (
+                        commentId INTEGER PRIMARY KEY AUTOINCREMENT,
+                        monthDate DATETIME NOT NULL,
+                        comment VARCHAR NULL,
+                        UNIQUE(monthDate)
+                    )";
+
+                using (var cmd = new SQLiteCommand(createTableQuery, conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+                System.Diagnostics.Debug.WriteLine("[DB] monthlyComment 테이블 생성/확인 완료");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DB ERROR] monthlyComment 스키마 업데이트 실패: {ex.Message}");
+            }
+        }
+
+        // Test connection method
+        public bool TestConnection()
+        {
+            try
+            {
+                using (var connection = GetConnection())
+                {
+                    connection.Open();
+                    System.Diagnostics.Debug.WriteLine($"DB 연결 성공: {_dbPath}");
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DB 연결 실패: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"시도한 경로: {_dbPath}");
+                return false;
+            }
+        }
+
+        // Execute SELECT queries
+        public DataTable ExecuteSelect(string query)
+        {
+            return ExecuteWithRetry(() =>
+            {
+                var dt = new DataTable();
+                using (var connection = GetConnection())
+                {
+                    connection.Open();
+                    using (var command = new SQLiteCommand(query, connection))
+                    using (var adapter = new SQLiteDataAdapter(command))
+                    {
+                        adapter.Fill(dt);
+                    }
+                }
+                System.Diagnostics.Debug.WriteLine($"SELECT 쿼리 실행 성공. 반환된 행: {dt.Rows.Count}");
+                return dt;
+            });
+        }
+
+        // Execute INSERT, UPDATE, DELETE queries
+        public int ExecuteNonQuery(string query)
+        {
+            return ExecuteWithRetry(() =>
+            {
+                int result = 0;
+                using (var connection = GetConnection())
+                {
+                    connection.Open();
+                    using (var command = new SQLiteCommand(query, connection))
+                    {
+                        result = command.ExecuteNonQuery();
+                    }
+                }
+                System.Diagnostics.Debug.WriteLine($"쿼리 실행 성공. 영향받은 행: {result}");
+                return result;
+            });
+        }
+
+        public void CheckTableStructure()
+        {
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("=== 데이터베이스 테이블 구조 확인 ===");
+                string query = @"
+                    SELECT sql FROM sqlite_master
+                    WHERE type='table' AND name IN ('category', 'noteContent', 'Subject', 'time', 'monthlyEvent', 'Todo', 'Note', 'TopicGroup', 'TopicItem', 'StudySession', 'DailySubject', 'DailyTopicGroup', 'DailyTopicItem');";
+
+                var result = ExecuteSelect(query);
+                foreach (DataRow row in result.Rows)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[DB SCHEMA] {row["sql"]}");
+                }
+
+                // noteContent 테이블의 데이터 확인
+                query = "SELECT COUNT(*) as count FROM noteContent";
+                result = ExecuteSelect(query);
+                System.Diagnostics.Debug.WriteLine($"[DB] noteContent 테이블의 행 수: {result.Rows[0]["count"]}");
+
+                // category 테이블의 데이터 확인
+                query = "SELECT * FROM category";
+                result = ExecuteSelect(query);
+                System.Diagnostics.Debug.WriteLine($"[DB] category 테이블 내용:");
+                foreach (DataRow row in result.Rows)
+                {
+                    System.Diagnostics.Debug.WriteLine($"  CategoryId: {row["categoryId"]}, Title: {row["title"]}, SubjectId: {row["subJectId"]}");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DB ERROR] 테이블 구조 확인 실패: {ex.Message}");
+            }
+        }
+
+        public void DebugPrintAllData(int subjectId)
+        {
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("=== 데이터베이스 전체 내용 ===");
+
+                // 카테고리 출력
+                string categoryQuery = $@"
+                    SELECT categoryId, title, displayOrder, level, parentCategoryId
+                    FROM category
+                    WHERE subJectId = {subjectId}
+                    ORDER BY displayOrder";
+
+                var categoryResult = ExecuteSelect(categoryQuery);
+                System.Diagnostics.Debug.WriteLine($"[카테고리] 총 {categoryResult.Rows.Count}개");
+                foreach (DataRow row in categoryResult.Rows)
+                {
+                    System.Diagnostics.Debug.WriteLine($"  ID: {row["categoryId"]}, " +
+                                    $"Title: '{row["title"]}', " +
+                                    $"Order: {row["displayOrder"]}, " +
+                                    $"Level: {row["level"]}, " +
+                                    $"ParentId: {(row["parentCategoryId"] == DBNull.Value ? "NULL" : row["parentCategoryId"])}");
+                }
+
+                // 텍스트 내용 출력
+                string textQuery = $@"
+                    SELECT textId, content, categoryId, displayOrder
+                    FROM noteContent
+                    WHERE subJectId = {subjectId}
+                    ORDER BY displayOrder";
+
+                var textResult = ExecuteSelect(textQuery);
+                System.Diagnostics.Debug.WriteLine($"\n[텍스트] 총 {textResult.Rows.Count}개");
+                foreach (DataRow row in textResult.Rows)
+                {
+                    System.Diagnostics.Debug.WriteLine($"  ID: {row["textId"]}, " +
+                                    $"CategoryId: {row["categoryId"]}, " +
+                                    $"Order: {row["displayOrder"]}, " +
+                                    $"Content: '{row["content"]?.ToString().Substring(0, Math.Min(50, row["content"]?.ToString().Length ?? 0))}'...");
+                }
+
+                // 카테고리별 텍스트 개수
+                string countQuery = $@"
+                    SELECT c.categoryId, c.title, COUNT(n.textId) as textCount
+                    FROM category c
+                    LEFT JOIN noteContent n ON c.categoryId = n.categoryId
+                    WHERE c.subJectId = {subjectId}
+                    GROUP BY c.categoryId, c.title
+                    ORDER BY c.displayOrder";
+
+                var countResult = ExecuteSelect(countQuery);
+                System.Diagnostics.Debug.WriteLine($"\n[카테고리별 텍스트 개수]");
+                foreach (DataRow row in countResult.Rows)
+                {
+                    System.Diagnostics.Debug.WriteLine($"  카테고리 '{row["title"]}' (ID: {row["categoryId"]}): {row["textCount"]}개");
+                }
+
+                System.Diagnostics.Debug.WriteLine("========================");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ERROR] DebugPrintAllData: {ex.Message}");
+            }
+        }
+
+        public void VerifyDatabaseIntegrity(int subjectId)
+        {
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("=== 데이터베이스 무결성 검증 ===");
+
+                // 1. 고아 noteContent 찾기
+                string orphanQuery = $@"
+                    SELECT n.textId, n.content, n.categoryId
+                    FROM noteContent n
+                    LEFT JOIN category c ON n.categoryId = c.categoryId
+                    WHERE n.subJectId = {subjectId} AND c.categoryId IS NULL";
+
+                var orphanResult = ExecuteSelect(orphanQuery);
+                if (orphanResult.Rows.Count > 0)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[DB ERROR] 고아 noteContent 발견: {orphanResult.Rows.Count}개");
+                    foreach (DataRow row in orphanResult.Rows)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"  TextId: {row["textId"]}, CategoryId: {row["categoryId"]}");
+                    }
+                }
+
+                // 2. DisplayOrder 중복 검사
+                string duplicateQuery = $@"
+                    SELECT displayOrder, COUNT(*) as cnt
+                    FROM (
+                        SELECT displayOrder FROM category WHERE subJectId = {subjectId}
+                        UNION ALL
+                        SELECT displayOrder FROM noteContent WHERE subJectId = {subjectId}
+                    )
+                    GROUP BY displayOrder
+                    HAVING COUNT(*) > 1";
+
+                var duplicateResult = ExecuteSelect(duplicateQuery);
+                if (duplicateResult.Rows.Count > 0)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[DB ERROR] DisplayOrder 중복 발견:");
+                    foreach (DataRow row in duplicateResult.Rows)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"  DisplayOrder: {row["displayOrder"]}, Count: {row["cnt"]}");
+                    }
+                }
+
+                // 3. 이미지 파일 검증
+                string imageQuery = $@"
+                    SELECT textId, imageUrl
+                    FROM noteContent
+                    WHERE subJectId = {subjectId} AND contentType = 'image' AND imageUrl IS NOT NULL";
+
+                var imageResult = ExecuteSelect(imageQuery);
+                foreach (DataRow row in imageResult.Rows)
+                {
+                    string imageUrl = row["imageUrl"].ToString();
+                    string fullPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, imageUrl);
+                    if (!File.Exists(fullPath))
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[DB ERROR] 이미지 파일 없음: TextId={row["textId"]}, Path={imageUrl}");
+                    }
+                }
+
+                System.Diagnostics.Debug.WriteLine("=== 검증 완료 ===");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DB ERROR] 무결성 검증 실패: {ex.Message}");
+            }
+        }
+
+        // DB path getter
+        public string GetDatabasePath() => _dbPath;
     }
 
-    // ===== 데이터 전송용 클래스들 =====
+    // ===== Data Transfer Classes =====
     public class TopicGroupData
     {
         public string GroupTitle { get; set; } = string.Empty;
-        public int TotalStudyTimeSeconds { get; set; } // ✅ 초단위
+        public int TotalStudyTimeSeconds { get; set; }
         public bool IsCompleted { get; set; }
         public List<TopicItemData> Topics { get; set; } = new();
     }
@@ -1708,7 +2091,7 @@ namespace SP.Modules.Common.Helpers
     {
         public string Name { get; set; } = string.Empty;
         public double Progress { get; set; }
-        public int StudyTimeSeconds { get; set; } // ✅ 초단위
+        public int StudyTimeSeconds { get; set; }
         public bool IsCompleted { get; set; }
     }
 }

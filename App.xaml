@@ -20,6 +20,23 @@
             <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
             <conv:StringNullOrEmptyToVisibilityConverter x:Key="StringNullOrEmptyToVisibilityConverter"/>
             <conv:HasItemsToVisibilityConverter x:Key="HasItemsToVisibilityConverter"/>
+            <Style TargetType="TextBox">
+                <Setter Property="FontFamily"
+         Value="pack://application:,,,/Resources/Fonts/#Pretendard Variable" />
+            </Style>
+            <Style TargetType="TextBlock">
+                <Setter Property="FontFamily"
+         Value="pack://application:,,,/Resources/Fonts/#Pretendard Variable" />
+            </Style>
+            <Style TargetType="Run">
+                <Setter Property="FontFamily" Value="pack://application:,,,/Resources/Fonts/#Pretendard Variable" />
+            </Style>
+            <Style TargetType="Bold">
+                <Setter Property="FontFamily" Value="pack://application:,,,/Resources/Fonts/#Pretendard Variable" />
+            </Style>
+            <Style TargetType="Italic">
+                <Setter Property="FontFamily" Value="pack://application:,,,/Resources/Fonts/#Pretendard Variable" />
+            </Style>
         </ResourceDictionary>
 
     </Application.Resources>
